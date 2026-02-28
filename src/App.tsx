@@ -1,0 +1,830 @@
+import React, { useState, useEffect, useCallback, useMemo } from 'react';
+import { motion, AnimatePresence } from 'motion/react';
+import { 
+  Flower, 
+  Users, 
+  Zap, 
+  ArrowRight, 
+  RotateCcw, 
+  Play, 
+  Pause,
+  Info,
+  ChevronRight,
+  TrendingUp,
+  Wind,
+  Timer,
+  Sprout,
+  Sun,
+  BookOpen
+} from 'lucide-react';
+import { Phase, Organism } from './types';
+import { createInitialPopulation, reproduce, calculatePhenotype } from './engine';
+import { Histogram } from './components/Histogram';
+import { PopulationGrid } from './components/PopulationGrid';
+import { PhenotypeHistoryChart } from './components/PhenotypeHistoryChart';
+import { OrganismDetailPanel } from './components/OrganismDetailPanel';
+import { GameplayGuide } from './components/GameplayGuide';
+import { PHASE_DATA, FLOWER_THEMES, FlowerTheme } from './constants';
+import { cn } from './lib/utils';
+
+export default function App() {
+  const [isSplashVisible, setIsSplashVisible] = useState(true);
+  const [language, setLanguage] = useState<'en' | 'es'>('en');
+  const [theme, setTheme] = useState<'light' | 'dark'>('light');
+  const [flowerTheme, setFlowerTheme] = useState<FlowerTheme>(FLOWER_THEMES[0]);
+  const [phase, setPhase] = useState<Phase>(Phase.MENDELIAN_SIMPLICITY);
+  const [population, setPopulation] = useState<Organism[]>([]);
+  const [generation, setGeneration] = useState(0);
+  const [mutationRate, setMutationRate] = useState(0.01);
+  const [populationSize, setPopulationSize] = useState(20);
+  const [generationInterval, setGenerationInterval] = useState(500);
+  const [selectionStrength, setSelectionStrength] = useState(0.5);
+  const [selectionTarget, setSelectionTarget] = useState(0.5);
+  const [layoutMode, setLayoutMode] = useState<'grid' | 'concentric' | 'color'>('concentric');
+  const [isPlaying, setIsPlaying] = useState(false);
+  const [showConcept, setShowConcept] = useState(false);
+  const [discoveryProgress, setDiscoveryProgress] = useState(0);
+  const [history, setHistory] = useState<any[]>([]);
+  const [selectedOrganism, setSelectedOrganism] = useState<Organism | null>(null);
+  const [breedingPartner, setBreedingPartner] = useState<Organism | null>(null);
+  const [showGameplay, setShowGameplay] = useState(false);
+
+  // Fix body scroll when splash or detail panel is visible
+  useEffect(() => {
+    if (isSplashVisible || selectedOrganism || showGameplay) {
+      document.body.style.overflow = 'hidden';
+    } else {
+      document.body.style.overflow = 'auto';
+    }
+    return () => {
+      document.body.style.overflow = 'auto';
+    };
+  }, [isSplashVisible, selectedOrganism, showGameplay]);
+
+  const currentPhaseData = PHASE_DATA[phase];
+
+  const getHistoryPoint = useCallback((pop: Organism[], gen: number) => {
+    const bins = { T1: 0, T2: 0, T3: 0, T4: 0, T5: 0 };
+    pop.forEach(org => {
+      if (org.phenotype < 0.2) bins.T1++;
+      else if (org.phenotype < 0.4) bins.T2++;
+      else if (org.phenotype < 0.6) bins.T3++;
+      else if (org.phenotype < 0.8) bins.T4++;
+      else bins.T5++;
+    });
+    return { generation: gen, ...bins };
+  }, []);
+
+  // Initialize population on phase change or theme change
+  useEffect(() => {
+    let numGenes = 1;
+    if (phase === Phase.MULTI_GENE) numGenes = 4;
+    else if (phase >= Phase.FULLY_POLYGENIC) numGenes = 20;
+    
+    const initialPop = createInitialPopulation(populationSize, numGenes, phase);
+    setPopulation(initialPop);
+    setGeneration(0);
+    setDiscoveryProgress(0);
+    setShowConcept(false);
+    setHistory([getHistoryPoint(initialPop, 0)]);
+  }, [phase, populationSize, getHistoryPoint, flowerTheme]);
+
+  const runGeneration = useCallback(() => {
+    setPopulation(prev => {
+      const nextPop: Organism[] = [];
+      
+      // Selection logic (Phase 6)
+      if (phase === Phase.SELECTION_DRIFT) {
+        // Calculate fitness for all based on selectionTarget
+        const populationWithFitness = prev.map(org => {
+          const dist = Math.abs(org.phenotype - selectionTarget);
+          // Fitness is higher for those closer to target
+          // selectionStrength 0 -> fitness 1 for all (pure drift)
+          // selectionStrength 1 -> fitness varies significantly
+          const fitness = Math.exp(-dist * 8 * selectionStrength); 
+          return { org, fitness };
+        });
+
+        const totalFitness = populationWithFitness.reduce((sum, p) => sum + p.fitness, 0);
+        
+        for (let i = 0; i < populationSize; i++) {
+          const pickParent = () => {
+            let r = Math.random() * totalFitness;
+            for (const p of populationWithFitness) {
+              r -= p.fitness;
+              if (r <= 0) return p.org;
+            }
+            return populationWithFitness[0].org;
+          };
+          
+          const p1 = pickParent();
+          const p2 = pickParent();
+          nextPop.push(reproduce(p1, p2, mutationRate, phase));
+        }
+      } else {
+        // Standard random mating
+        for (let i = 0; i < populationSize; i++) {
+          const p1 = prev[Math.floor(Math.random() * prev.length)];
+          const p2 = prev[Math.floor(Math.random() * prev.length)];
+          nextPop.push(reproduce(p1, p2, mutationRate, phase));
+        }
+      }
+      
+      return nextPop;
+    });
+    setGeneration(g => g + 1);
+    setDiscoveryProgress(p => Math.min(100, p + 20));
+  }, [populationSize, mutationRate, phase, selectionStrength]);
+
+  // Separate history tracking to avoid stale closures and side effects in setPopulation
+  useEffect(() => {
+    if (population.length === 0) return;
+    setHistory(h => {
+      // Only add if this generation isn't already the last point
+      if (h.length > 0 && h[h.length - 1].generation === generation) return h;
+      const point = getHistoryPoint(population, generation);
+      const newHistory = [...h, point];
+      return newHistory.slice(-50);
+    });
+  }, [population, generation, getHistoryPoint]);
+
+  useEffect(() => {
+    let interval: any;
+    // Pause simulation if an organism is selected (Genetic Gardener mode)
+    if (isPlaying && !selectedOrganism) {
+      interval = setInterval(runGeneration, generationInterval);
+    }
+    return () => clearInterval(interval);
+  }, [isPlaying, runGeneration, generationInterval, selectedOrganism]);
+
+  const nextPhase = () => {
+    if (phase < Phase.SELECTION_DRIFT) {
+      setPhase(p => p + 1);
+    }
+  };
+
+  const resetPopulation = () => {
+    let numGenes = 1;
+    if (phase === Phase.MULTI_GENE) numGenes = 4;
+    else if (phase >= Phase.FULLY_POLYGENIC) numGenes = 20;
+    
+    const initialPop = createInitialPopulation(populationSize, numGenes, phase);
+    setPopulation(initialPop);
+    setGeneration(0);
+    setDiscoveryProgress(0);
+    setHistory([getHistoryPoint(initialPop, 0)]);
+  };
+
+  const phenotypeData = useMemo(() => population.map(p => p.phenotype), [population]);
+
+  const t = useMemo(() => ({
+    en: {
+      tagline: "A simulation of genetic inheritance, population dynamics, and evolutionary selection.",
+      selectSpecies: "Select Your Species",
+      startGardening: "Start Gardening",
+      seeGameplay: "See Gameplay",
+      genes: "Genes",
+      currentPhase: "Current Phase",
+      generation: "Generation",
+      management: "Garden Management",
+      mutationRate: "Mutation Rate",
+      gardenSize: "Garden Size",
+      bloomSpeed: "Bloom Speed",
+      targetColor: "Target Color",
+      selectionStrength: "Selection Strength",
+      driftDesc: "Pure Genetic Drift: Luck determines survival.",
+      selectionDesc: "Strong Selection: Only the fittest survive.",
+      balancedDesc: "Balanced: Both luck and fitness matter.",
+      stopSeasons: "Stop Seasons",
+      startSeasons: "Start Seasons",
+      nextGen: "Next Generation",
+      replant: "Replant Garden",
+      layoutRandom: "Random",
+      layoutFreq: "Frequency",
+      layoutColor: "Color",
+      advance: "Advance to Next Season",
+      analysisProgress: "Analysis Progress",
+      observeDesc: "Observe the phenotypic distribution to understand the underlying genetic architecture.",
+      simComplete: "Simulation complete. The genetic mechanism has been fully characterized.",
+      viewAnalysis: "View Analysis",
+      health: "Garden Health: Optimal",
+      garden: "Garden",
+      flowers: "Flowers",
+      mutation: "Mutation",
+      restart: "Restart Garden"
+    },
+    es: {
+      tagline: "Una simulación de herencia genética, dinámica de poblaciones y selección evolutiva.",
+      selectSpecies: "Selecciona tu Especie",
+      startGardening: "Empezar Jardinería",
+      seeGameplay: "Ver Simulación",
+      genes: "Genes",
+      currentPhase: "Fase Actual",
+      generation: "Generación",
+      management: "Gestión del Jardín",
+      mutationRate: "Tasa de Mutación",
+      gardenSize: "Tamaño del Jardín",
+      bloomSpeed: "Velocidad de Floración",
+      targetColor: "Color Objetivo",
+      selectionStrength: "Fuerza de Selección",
+      driftDesc: "Deriva Genética Pura: La suerte determina la supervivencia.",
+      selectionDesc: "Selección Fuerte: Solo los más aptos sobreviven.",
+      balancedDesc: "Equilibrado: Tanto la suerte como la aptitud importan.",
+      stopSeasons: "Detener Estaciones",
+      startSeasons: "Iniciar Estaciones",
+      nextGen: "Siguiente Generación",
+      replant: "Replantar Jardín",
+      layoutRandom: "Aleatorio",
+      layoutFreq: "Frecuencia",
+      layoutColor: "Color",
+      advance: "Avanzar a la Siguiente Estación",
+      analysisProgress: "Progreso del Análisis",
+      observeDesc: "Observa la distribución fenotípica para comprender la arquitectura genética subyacente.",
+      simComplete: "Simulación completa. El mecanismo genético ha sido caracterizado por completo.",
+      viewAnalysis: "Ver Análisis",
+      health: "Salud del Jardín: Óptima",
+      garden: "Jardín",
+      flowers: "Flores",
+      mutation: "Mutación",
+      restart: "Reiniciar Jardín"
+    }
+  }[language]), [language]);
+
+  const chartColors = useMemo(() => {
+    const { colors } = flowerTheme;
+    return [0.1, 0.3, 0.5, 0.7, 0.9].map(mid => {
+      const hue = colors.start + (colors.end - colors.start) * mid;
+      return `hsl(${hue}, ${colors.saturation}%, ${colors.lightness}%)`;
+    });
+  }, [flowerTheme]);
+
+  const handleSelectOrganism = (org: Organism) => {
+    if (!selectedOrganism) {
+      setSelectedOrganism(org);
+    } else if (selectedOrganism.id === org.id) {
+      setSelectedOrganism(null);
+      setBreedingPartner(null);
+    } else {
+      setBreedingPartner(org);
+    }
+  };
+
+  const handleBreed = (parent1: Organism, parent2: Organism) => {
+    setPopulation(prev => {
+      // Repopulate the entire garden with offspring from this cross
+      // We use the current population length to maintain the same garden size
+      return Array.from({ length: prev.length }).map(() => reproduce(parent1, parent2, mutationRate, phase));
+    });
+    
+    // Increment the generation count to reflect the new population
+    setGeneration(prev => prev + 1);
+    
+    // Clear selection and close the panel after mass breeding to show the new garden
+    setSelectedOrganism(null);
+    setBreedingPartner(null);
+  };
+
+  return (
+    <div className={cn(
+      "min-h-screen font-sans selection:bg-indigo-100 transition-colors duration-300",
+      theme === 'dark' ? "bg-[#0C0A09] text-[#FAFAF9] dark" : "bg-[#F5F5F4] text-[#1C1917]"
+    )}>
+      <AnimatePresence>
+        {showGameplay && (
+          <GameplayGuide 
+            onClose={() => setShowGameplay(false)} 
+            language={language} 
+            isDark={theme === 'dark'} 
+          />
+        )}
+      </AnimatePresence>
+
+      <AnimatePresence>
+        {isSplashVisible && (
+          <motion.div 
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
+            className={cn(
+              "fixed inset-0 z-50 backdrop-blur-sm flex items-center justify-center p-4 overflow-y-auto",
+              theme === 'dark' ? "bg-black/80" : "bg-[#F5F5F4]/95"
+            )}
+          >
+            <div className={cn(
+              "max-w-xl w-full rounded-[2.5rem] shadow-2xl border p-8 md:p-10 my-auto transition-colors",
+              theme === 'dark' ? "bg-[#1C1917] border-white/10" : "bg-white border-black/5"
+            )}>
+              <div className="flex flex-col items-center text-center mb-10">
+                <div className="w-20 h-20 bg-emerald-600 rounded-3xl flex items-center justify-center text-white shadow-2xl shadow-emerald-200 mb-6">
+                  <Flower size={48} />
+                </div>
+                <h1 className="text-4xl font-black tracking-tight mb-2">Genetica Garden</h1>
+                <p className={cn(
+                  "font-medium max-w-sm",
+                  theme === 'dark' ? "text-gray-400" : "text-gray-500"
+                )}>
+                  {t.tagline}
+                </p>
+              </div>
+
+              <div className="space-y-8 mb-10">
+                <div>
+                  <h3 className="text-xs font-mono uppercase tracking-widest text-gray-400 mb-4 text-center">{t.selectSpecies}</h3>
+                  <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+                    {FLOWER_THEMES.map((themeOption) => (
+                      <button
+                        key={themeOption.id}
+                        onClick={() => setFlowerTheme(themeOption)}
+                        className={cn(
+                          "p-4 rounded-3xl border-2 transition-all text-left group relative overflow-hidden",
+                          flowerTheme.id === themeOption.id 
+                            ? "border-emerald-600 bg-emerald-50/50" 
+                            : theme === 'dark' 
+                              ? "border-white/5 hover:border-white/20 bg-white/5"
+                              : "border-gray-100 hover:border-gray-200 bg-gray-50/50"
+                        )}
+                      >
+                        <div 
+                          className="w-10 h-10 rounded-full mb-3 shadow-md group-hover:scale-110 transition-transform"
+                          style={{ backgroundColor: `hsl(${themeOption.colors.start}, ${themeOption.colors.saturation}%, ${themeOption.colors.lightness}%)` }}
+                        />
+                        <h4 className="font-bold text-xs mb-1">{themeOption.name[language]}</h4>
+                        <p className={cn(
+                          "text-[10px] leading-tight opacity-0 group-hover:opacity-100 transition-opacity absolute bottom-2 left-4 right-4 p-1 rounded backdrop-blur-sm",
+                          theme === 'dark' ? "bg-black/80 text-gray-300" : "bg-white/80 text-gray-500"
+                        )}>
+                          {themeOption.description[language]}
+                        </p>
+                      </button>
+                    ))}
+                  </div>
+                </div>
+              </div>
+
+              <div className="flex flex-col gap-3">
+                <button
+                  onClick={() => setIsSplashVisible(false)}
+                  className="w-full py-5 bg-emerald-600 text-white rounded-3xl font-black text-xl hover:bg-emerald-700 shadow-2xl shadow-emerald-200 transition-all flex items-center justify-center gap-3 active:scale-95"
+                >
+                  {t.startGardening} <ArrowRight size={24} />
+                </button>
+                
+                <button
+                  onClick={() => setShowGameplay(true)}
+                  className={cn(
+                    "w-full py-4 border-2 rounded-3xl font-bold text-sm transition-all flex items-center justify-center gap-2",
+                    theme === 'dark' 
+                      ? "bg-white/5 text-emerald-400 border-white/10 hover:bg-white/10"
+                      : "bg-white text-emerald-600 border-emerald-100 hover:bg-emerald-50"
+                  )}
+                >
+                  <BookOpen size={16} /> {t.seeGameplay}
+                </button>
+              </div>
+            </div>
+          </motion.div>
+        )}
+      </AnimatePresence>
+
+      {/* Header */}
+      <header className={cn(
+        "border-b backdrop-blur-md sticky top-0 z-10 transition-colors",
+        theme === 'dark' ? "bg-black/60 border-white/10" : "bg-white/80 border-black/5"
+      )}>
+        <div className="max-w-7xl mx-auto px-6 h-16 flex items-center justify-between">
+          <div className="flex items-center gap-3">
+            <div className="w-10 h-10 bg-emerald-600 rounded-xl flex items-center justify-center text-white shadow-lg shadow-emerald-200">
+              <Flower size={24} />
+            </div>
+            <div>
+              <h1 className="font-bold text-lg tracking-tight">Genetica Garden</h1>
+              <p className="text-[10px] uppercase tracking-widest text-gray-400 font-mono">The Living Laboratory v1.0</p>
+            </div>
+          </div>
+          
+          <div className="flex items-center gap-4 md:gap-6">
+            <div className="hidden sm:flex items-center gap-4 md:gap-6">
+              <div className="flex flex-col items-end">
+                <span className="text-[10px] uppercase tracking-widest text-gray-400 font-mono">{t.genes}</span>
+                <span className="font-mono font-bold text-emerald-600">
+                  {phase === Phase.MULTI_GENE ? 4 : (phase >= Phase.FULLY_POLYGENIC ? 20 : 1)}
+                </span>
+              </div>
+              <div className="h-8 w-px bg-black/5 dark:bg-white/10" />
+              <div className="flex flex-col items-end">
+                <span className="text-[10px] uppercase tracking-widest text-gray-400 font-mono">{t.currentPhase}</span>
+                <span className="font-medium text-sm">{currentPhaseData.subtitle[language]}</span>
+              </div>
+              <div className="h-8 w-px bg-black/5 dark:bg-white/10" />
+              <div className="flex flex-col items-end">
+                <span className="text-[10px] uppercase tracking-widest text-gray-400 font-mono">{t.generation}</span>
+                <span className="font-mono font-bold text-indigo-600 dark:text-indigo-400">{generation}</span>
+              </div>
+              <div className="h-8 w-px bg-black/5 dark:bg-white/10" />
+            </div>
+
+            <div className="flex items-center gap-2">
+              <button 
+                onClick={() => setLanguage(l => l === 'en' ? 'es' : 'en')}
+                className={cn(
+                  "w-10 h-10 rounded-xl flex items-center justify-center font-bold text-xs transition-all",
+                  theme === 'dark' ? "bg-white/5 hover:bg-white/10 text-gray-300" : "bg-gray-100 hover:bg-gray-200 text-gray-600"
+                )}
+              >
+                {language === 'en' ? 'ES' : 'EN'}
+              </button>
+              <button 
+                onClick={() => setTheme(t => t === 'light' ? 'dark' : 'light')}
+                className={cn(
+                  "w-10 h-10 rounded-xl flex items-center justify-center transition-all",
+                  theme === 'dark' ? "bg-white/5 hover:bg-white/10 text-amber-400" : "bg-gray-100 hover:bg-gray-200 text-gray-600"
+                )}
+              >
+                {theme === 'light' ? <Sun size={18} /> : <Wind size={18} />}
+              </button>
+              <button 
+                onClick={() => setShowGameplay(true)}
+                className={cn(
+                  "w-10 h-10 rounded-xl flex items-center justify-center transition-all",
+                  theme === 'dark' ? "bg-white/5 hover:bg-white/10 text-indigo-400" : "bg-gray-100 hover:bg-gray-200 text-gray-600"
+                )}
+                title={t.seeGameplay}
+              >
+                <BookOpen size={18} />
+              </button>
+            </div>
+          </div>
+        </div>
+      </header>
+
+      <main className="max-w-7xl mx-auto px-6 py-8 grid grid-cols-1 lg:grid-cols-12 gap-8">
+        {/* Sidebar Controls */}
+        <aside className="lg:col-span-3 space-y-6">
+          <div className={cn(
+            "p-6 rounded-2xl border shadow-sm space-y-6 transition-colors",
+            theme === 'dark' ? "bg-[#1C1917] border-white/10" : "bg-white border-black/5"
+          )}>
+            <h2 className="text-xs font-mono uppercase tracking-widest text-gray-400 mb-4">{t.management}</h2>
+            
+            <div className="space-y-4">
+              <div className="space-y-2">
+                <div className="flex justify-between text-xs font-medium">
+                  <label className="flex items-center gap-2"><Zap size={14} className="text-amber-500" /> {t.mutationRate}</label>
+                  <span className="font-mono">{(mutationRate * 100).toFixed(1)}%</span>
+                </div>
+                <input 
+                  type="range" 
+                  min="0" 
+                  max="0.2" 
+                  step="0.005" 
+                  value={mutationRate}
+                  onChange={(e) => setMutationRate(parseFloat(e.target.value))}
+                  className="w-full h-1.5 bg-gray-100 dark:bg-white/10 rounded-lg appearance-none cursor-pointer accent-emerald-600"
+                />
+              </div>
+
+              <div className="space-y-2">
+                <div className="flex justify-between text-xs font-medium">
+                  <label className="flex items-center gap-2"><Sprout size={14} className="text-emerald-500" /> {t.gardenSize}</label>
+                  <span className="font-mono">{populationSize}</span>
+                </div>
+                <input 
+                  type="range" 
+                  min="20" 
+                  max="100" 
+                  step="10" 
+                  value={populationSize}
+                  onChange={(e) => setPopulationSize(parseInt(e.target.value))}
+                  className="w-full h-1.5 bg-gray-100 dark:bg-white/10 rounded-lg appearance-none cursor-pointer accent-emerald-600"
+                />
+              </div>
+
+              <div className="space-y-2">
+                <div className="flex justify-between text-xs font-medium">
+                  <label className="flex items-center gap-2"><Timer size={14} className="text-blue-500" /> {t.bloomSpeed}</label>
+                  <span className="font-mono">{generationInterval}ms</span>
+                </div>
+                <input 
+                  type="range" 
+                  min="100" 
+                  max="2000" 
+                  step="100" 
+                  value={generationInterval}
+                  onChange={(e) => setGenerationInterval(parseInt(e.target.value))}
+                  className="w-full h-1.5 bg-gray-100 dark:bg-white/10 rounded-lg appearance-none cursor-pointer accent-emerald-600"
+                />
+              </div>
+
+              {phase === Phase.SELECTION_DRIFT && (
+                <motion.div 
+                  initial={{ opacity: 0, height: 0 }}
+                  animate={{ opacity: 1, height: 'auto' }}
+                  className="space-y-4 pt-4 border-t border-black/5 dark:border-white/10"
+                >
+                  <div className="space-y-2">
+                    <div className="flex justify-between text-xs font-medium">
+                      <label className="flex items-center gap-2"><Sun size={14} className="text-amber-500" /> {t.targetColor}</label>
+                      <div 
+                        className="w-4 h-4 rounded-full border border-black/10" 
+                        style={{ 
+                          backgroundColor: `hsl(${flowerTheme.colors.start + (flowerTheme.colors.end - flowerTheme.colors.start) * selectionTarget}, ${flowerTheme.colors.saturation}%, ${flowerTheme.colors.lightness}%)` 
+                        }}
+                      />
+                    </div>
+                    <input 
+                      type="range" 
+                      min="0" 
+                      max="1" 
+                      step="0.01" 
+                      value={selectionTarget}
+                      onChange={(e) => setSelectionTarget(parseFloat(e.target.value))}
+                      className="w-full h-1.5 bg-gray-100 dark:bg-white/10 rounded-lg appearance-none cursor-pointer accent-emerald-600"
+                    />
+                  </div>
+
+                  <div className="space-y-2">
+                    <div className="flex justify-between text-xs font-medium">
+                      <label className="flex items-center gap-2">{t.selectionStrength}</label>
+                      <span className="font-mono">{(selectionStrength * 100).toFixed(0)}%</span>
+                    </div>
+                    <input 
+                      type="range" 
+                      min="0" 
+                      max="1" 
+                      step="0.05" 
+                      value={selectionStrength}
+                      onChange={(e) => setSelectionStrength(parseFloat(e.target.value))}
+                      className="w-full h-1.5 bg-gray-100 dark:bg-white/10 rounded-lg appearance-none cursor-pointer accent-amber-500"
+                    />
+                    <p className="text-[10px] text-gray-400 italic">
+                      {selectionStrength === 0 
+                        ? t.driftDesc 
+                        : selectionStrength > 0.8 
+                        ? t.selectionDesc 
+                        : t.balancedDesc}
+                    </p>
+                  </div>
+                </motion.div>
+              )}
+            </div>
+
+            <div className="pt-4 space-y-3">
+              <button 
+                onClick={() => setIsPlaying(!isPlaying)}
+                disabled={!!selectedOrganism}
+                className={cn(
+                  "w-full py-3 rounded-xl font-bold text-sm flex items-center justify-center gap-2 transition-all shadow-md disabled:opacity-50 disabled:cursor-not-allowed",
+                  isPlaying 
+                    ? theme === 'dark' ? "bg-rose-900/30 text-rose-400 hover:bg-rose-900/50 shadow-rose-900/20" : "bg-rose-50 text-rose-600 hover:bg-rose-100 shadow-rose-100" 
+                    : "bg-emerald-600 text-white hover:bg-emerald-700 shadow-emerald-200"
+                )}
+              >
+                {selectedOrganism ? (
+                  <><Pause size={18} /> {language === 'en' ? 'Paused' : 'Pausado'}</>
+                ) : isPlaying ? (
+                  <><Pause size={18} /> {t.stopSeasons}</>
+                ) : (
+                  <><Play size={18} /> {t.startSeasons}</>
+                )}
+              </button>
+              
+              <button 
+                onClick={runGeneration}
+                disabled={isPlaying || !!selectedOrganism}
+                className={cn(
+                  "w-full py-3 border rounded-xl font-bold text-sm flex items-center justify-center gap-2 transition-all disabled:opacity-50 disabled:cursor-not-allowed",
+                  theme === 'dark' ? "bg-white/5 border-white/10 text-gray-300 hover:bg-white/10" : "bg-white border-gray-200 text-gray-700 hover:bg-gray-50"
+                )}
+              >
+                <ArrowRight size={18} /> {t.nextGen}
+              </button>
+
+              <button 
+                onClick={resetPopulation}
+                className="w-full py-3 text-gray-400 hover:text-gray-600 dark:hover:text-gray-200 rounded-xl font-medium text-xs flex items-center justify-center gap-2 transition-all"
+              >
+                <RotateCcw size={14} /> {t.replant}
+              </button>
+
+              <div className="flex gap-2 pt-2 border-t border-black/5 dark:border-white/10">
+                <button 
+                  onClick={() => setLayoutMode('grid')}
+                  className={cn(
+                    "flex-1 py-2 rounded-lg text-[10px] font-bold uppercase tracking-wider transition-all",
+                    layoutMode === 'grid' 
+                      ? "bg-emerald-100 text-emerald-700 border border-emerald-200 dark:bg-emerald-900/30 dark:text-emerald-400 dark:border-emerald-800" 
+                      : "bg-gray-50 text-gray-400 border border-transparent dark:bg-white/5"
+                  )}
+                >
+                  {t.layoutRandom}
+                </button>
+                <button 
+                  onClick={() => setLayoutMode('concentric')}
+                  className={cn(
+                    "flex-1 py-2 rounded-lg text-[10px] font-bold uppercase tracking-wider transition-all",
+                    layoutMode === 'concentric' 
+                      ? "bg-emerald-100 text-emerald-700 border border-emerald-200 dark:bg-emerald-900/30 dark:text-emerald-400 dark:border-emerald-800" 
+                      : "bg-gray-50 text-gray-400 border border-transparent dark:bg-white/5"
+                  )}
+                >
+                  {t.layoutFreq}
+                </button>
+                <button 
+                  onClick={() => setLayoutMode('color')}
+                  className={cn(
+                    "flex-1 py-2 rounded-lg text-[10px] font-bold uppercase tracking-wider transition-all",
+                    layoutMode === 'color' 
+                      ? "bg-emerald-100 text-emerald-700 border border-emerald-200 dark:bg-emerald-900/30 dark:text-emerald-400 dark:border-emerald-800" 
+                      : "bg-gray-50 text-gray-400 border border-transparent dark:bg-white/5"
+                  )}
+                >
+                  {t.layoutColor}
+                </button>
+              </div>
+            </div>
+          </div>
+
+          {/* Next Phase Always Available */}
+          <div className={cn(
+            "p-4 rounded-2xl border shadow-sm transition-colors",
+            theme === 'dark' ? "bg-[#1C1917] border-white/10" : "bg-white border-black/5"
+          )}>
+            <button 
+              onClick={nextPhase}
+              className="w-full py-3 bg-indigo-600 text-white rounded-xl font-bold text-sm flex items-center justify-center gap-2 hover:bg-indigo-700 transition-all shadow-md"
+            >
+              {t.advance} <ChevronRight size={18} />
+            </button>
+          </div>
+
+          {/* Discovery Progress */}
+          <div className={cn(
+            "p-6 rounded-2xl border transition-colors",
+            theme === 'dark' ? "bg-emerald-900/10 border-emerald-900/30" : "bg-emerald-50 border-emerald-100"
+          )}>
+            <h3 className={cn(
+              "text-xs font-bold uppercase tracking-wider mb-2",
+              theme === 'dark' ? "text-emerald-400" : "text-emerald-900"
+            )}>{t.analysisProgress}</h3>
+            <div className={cn(
+              "w-full h-2 rounded-full overflow-hidden mb-4",
+              theme === 'dark' ? "bg-emerald-900/40" : "bg-emerald-200"
+            )}>
+              <motion.div 
+                className="h-full bg-emerald-600"
+                initial={{ width: 0 }}
+                animate={{ width: `${discoveryProgress}%` }}
+              />
+            </div>
+            <p className={cn(
+              "text-xs leading-relaxed italic",
+              theme === 'dark' ? "text-emerald-300/70" : "text-emerald-700"
+            )}>
+              {discoveryProgress < 100 
+                ? t.observeDesc
+                : t.simComplete}
+            </p>
+            
+            {discoveryProgress >= 100 && !showConcept && (
+              <button 
+                onClick={() => setShowConcept(true)}
+                className="mt-4 w-full py-2 bg-emerald-600 text-white rounded-lg text-xs font-bold flex items-center justify-center gap-2 animate-pulse"
+              >
+                <Info size={14} /> {t.viewAnalysis}
+              </button>
+            )}
+          </div>
+        </aside>
+
+        {/* Main Content Area */}
+        <section className="lg:col-span-9 space-y-8">
+          {/* Narrative Header */}
+          <div className={cn(
+            "p-8 rounded-3xl border shadow-sm relative overflow-hidden transition-colors",
+            theme === 'dark' ? "bg-[#1C1917] border-white/10" : "bg-white border-black/5"
+          )}>
+            <div className="relative z-10 max-w-2xl">
+              <h2 className="text-3xl font-black tracking-tight mb-2">{currentPhaseData.title[language]}</h2>
+              <p className={cn(
+                "leading-relaxed",
+                theme === 'dark' ? "text-gray-400" : "text-gray-500"
+              )}>{currentPhaseData.description[language]}</p>
+            </div>
+            
+            {/* Background Decoration */}
+            <div className="absolute top-0 right-0 p-8 opacity-5">
+              <Flower size={200} />
+            </div>
+          </div>
+
+          {/* Visualizations */}
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+            <Histogram 
+              data={phenotypeData} 
+              bins={phase >= Phase.MULTI_GENE ? 20 : 5}
+              label={language === 'en' ? "Flower Color Distribution" : "Distribución del Color de las Flores"}
+              theme={flowerTheme}
+              isDark={theme === 'dark'}
+            />
+            <PhenotypeHistoryChart 
+              history={history} 
+              colors={chartColors} 
+              isDark={theme === 'dark'}
+              label={language === 'en' ? "Phenotype Evolution" : "Evolución del Fenotipo"}
+            />
+          </div>
+
+          <PopulationGrid 
+            population={population} 
+            layoutMode={layoutMode} 
+            theme={flowerTheme} 
+            isDark={theme === 'dark'}
+            onSelectOrganism={handleSelectOrganism}
+            selectedId={selectedOrganism?.id}
+            partnerId={breedingPartner?.id}
+          />
+
+          <AnimatePresence>
+            {selectedOrganism && (
+              <OrganismDetailPanel 
+                organism={selectedOrganism}
+                partner={breedingPartner}
+                onClose={() => {
+                  setSelectedOrganism(null);
+                  setBreedingPartner(null);
+                }}
+                onSelectPartner={setBreedingPartner}
+                onBreed={handleBreed}
+                theme={flowerTheme}
+                isDark={theme === 'dark'}
+                language={language}
+                phase={phase}
+                mutationRate={mutationRate}
+              />
+            )}
+          </AnimatePresence>
+
+          {/* Concept Reveal Modal / Section */}
+          <AnimatePresence>
+            {showConcept && (
+              <motion.div 
+                initial={{ opacity: 0, y: 20 }}
+                animate={{ opacity: 1, y: 0 }}
+                exit={{ opacity: 0, y: 20 }}
+                className={cn(
+                  "p-8 rounded-3xl shadow-2xl relative overflow-hidden transition-colors",
+                  theme === 'dark' ? "bg-emerald-950 text-white shadow-emerald-900/20" : "bg-emerald-900 text-white shadow-emerald-200"
+                )}
+              >
+                <div className="relative z-10">
+                  <div className="flex items-center gap-3 mb-4">
+                    <div className="p-2 bg-emerald-500/30 rounded-lg">
+                      <Sprout size={24} className="text-emerald-300" />
+                    </div>
+                    <h3 className="text-2xl font-bold">{currentPhaseData.conceptName?.[language]}</h3>
+                  </div>
+                  <p className="text-emerald-100 leading-relaxed text-lg mb-8 max-w-2xl">
+                    {currentPhaseData.conceptSummary?.[language]}
+                  </p>
+                  
+                  <button 
+                    onClick={nextPhase}
+                    className={cn(
+                      "group flex items-center gap-3 px-8 py-4 rounded-2xl font-black text-lg transition-all shadow-xl",
+                      theme === 'dark' ? "bg-emerald-500 text-white hover:bg-emerald-400" : "bg-white text-emerald-900 hover:bg-emerald-50"
+                    )}
+                  >
+                    {phase === Phase.SELECTION_DRIFT ? t.restart : t.advance}
+                    <ChevronRight className="group-hover:translate-x-1 transition-transform" />
+                  </button>
+                </div>
+                
+                {/* Background Decoration */}
+                <div className="absolute bottom-0 right-0 p-12 opacity-10">
+                  <Flower size={180} />
+                </div>
+              </motion.div>
+            )}
+          </AnimatePresence>
+        </section>
+      </main>
+
+      {/* Footer / Status Bar */}
+      <footer className={cn(
+        "border-t py-4 mt-12 transition-colors",
+        theme === 'dark' ? "bg-black/40 border-white/10" : "bg-white border-black/5"
+      )}>
+        <div className="max-w-7xl mx-auto px-6 flex justify-between items-center text-[10px] font-mono text-gray-400 uppercase tracking-widest">
+          <div className="flex gap-6">
+            <span className="flex items-center gap-1"><Sprout size={12} /> {t.garden}: {population.length} {t.flowers}</span>
+            <span className="flex items-center gap-1"><Zap size={12} /> {t.mutation}: {(mutationRate * 100).toFixed(1)}%</span>
+          </div>
+          <div className="flex items-center gap-4">
+            <span>{t.health}</span>
+            <div className="w-2 h-2 bg-emerald-500 rounded-full animate-pulse" />
+          </div>
+        </div>
+      </footer>
+    </div>
+  );
+}
