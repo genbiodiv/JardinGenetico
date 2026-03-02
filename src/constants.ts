@@ -153,7 +153,14 @@ export const GAMEPLAY_GUIDE: Localized<{
   howToPlay: { title: string; steps: string[] };
   phases: { title: string; list: { name: string; objective: string }[] };
   concepts: { title: string; list: { name: string; desc: string }[] };
-  controls: { title: string; items: { name: string; desc: string }[] };
+  controls: {
+    title: string;
+    items: { name: string; desc: string }[];
+  };
+  challenges: {
+    title: string;
+    list: { task: string; location: string }[];
+  };
 }> = {
   en: {
     intro: "Welcome to Genetic Garden, a living laboratory where you explore the fundamental principles of genetics and evolution through the breeding of digital flowers.",
@@ -201,8 +208,19 @@ export const GAMEPLAY_GUIDE: Localized<{
       title: "Garden Controls",
       items: [
         { name: "Mutation Rate", desc: "Controls how often random genetic errors occur during reproduction." },
+        { name: "Time between Generations", desc: "Determines the duration of each breeding cycle in the simulation." },
         { name: "Selection Strength", desc: "In Phase 5, determines how strictly the environment favors the 'Target Color'." },
         { name: "Layout Modes", desc: "Switch between Grid, Frequency (sorted by trait), and Color views to analyze your population." }
+      ]
+    },
+    challenges: {
+      title: "Learning Challenges",
+      list: [
+        { task: "Observe how genetic drift affects allele frequencies in small (20) vs. large (100) populations.", location: "Phase 5, Garden Management" },
+        { task: "Use the Genetic Gardener to manually edit genes and match a specific target color exactly.", location: "Any Phase, Genetic Gardener panel" },
+        { task: "Compare the phenotype distribution (histogram) when using 4 genes vs. 20 genes. How does the 'smoothness' change?", location: "Phase 3 vs. Phase 4, Visualizations" },
+        { task: "Set a high Selection Strength and observe how quickly the population shifts towards the Target Color.", location: "Phase 5, Garden Management" },
+        { task: "Set a high Mutation Rate (20%) and observe if the population can ever stabilize on a single color.", location: "Any Phase, Garden Management" }
       ]
     }
   },
@@ -252,8 +270,19 @@ export const GAMEPLAY_GUIDE: Localized<{
       title: "Controles del Jardín",
       items: [
         { name: "Tasa de Mutación", desc: "Controla con qué frecuencia ocurren errores genéticos aleatorios durante la reproducción." },
+        { name: "Tiempo entre Generaciones", desc: "Determina la duración de cada ciclo de cría en la simulación." },
         { name: "Fuerza de Selección", desc: "En la Fase 5, determina qué tan estrictamente el ambiente favorece el 'Color Objetivo'." },
         { name: "Modos de Diseño", desc: "Cambia entre las vistas de Cuadrícula, Frecuencia (ordenada por rasgo) y Color para analizar tu población." }
+      ]
+    },
+    challenges: {
+      title: "Desafíos de Aprendizaje",
+      list: [
+        { task: "Observa cómo la deriva genética afecta las frecuencias alélicas en poblaciones pequeñas (20) frente a grandes (100).", location: "Fase 5, Gestión del Jardín" },
+        { task: "Usa el Jardinero Genético para editar genes manualmente y coincidir exactamente con un color objetivo específico.", location: "Cualquier Fase, panel del Jardinero Genético" },
+        { task: "Compara la distribución del fenotipo (histograma) cuando usas 4 genes frente a 20 genes. ¿Cómo cambia la 'suavidad'?", location: "Fase 3 vs. Fase 4, Visualizaciones" },
+        { task: "Establece una Fuerza de Selección alta y observa qué tan rápido la población se desplaza hacia el Color Objetivo.", location: "Fase 5, Gestión del Jardín" },
+        { task: "Establece una Tasa de Mutación alta (20%) y observa si la población puede estabilizarse alguna vez en un solo color.", location: "Cualquier Fase, Gestión del Jardín" }
       ]
     }
   }

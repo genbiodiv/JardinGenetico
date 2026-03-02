@@ -1,4 +1,4 @@
-import React, { useMemo } from 'react';
+import React, { useMemo, memo } from 'react';
 import { Organism } from '../types';
 import { motion } from 'motion/react';
 import { FlowerTheme } from '../constants';
@@ -24,7 +24,7 @@ export const PopulationGrid: React.FC<PopulationGridProps> = ({
   partnerId
 }) => {
   // We only show a subset if population is huge to avoid lag
-  const displayLimit = 100;
+  const displayLimit = 64;
   const displayPop = population.slice(0, displayLimit);
 
   const positionedPopulation = useMemo(() => {
@@ -81,8 +81,8 @@ export const PopulationGrid: React.FC<PopulationGridProps> = ({
       isDark ? "bg-[#1C1917] border-white/10" : "bg-[#E7E5E4] border-black/5"
     )}>
       <div className="flex justify-between items-center mb-6 relative z-10">
-        <span className="text-xs font-mono uppercase tracking-wider text-gray-500 italic">The Garden Bed</span>
-        <span className="text-xs font-mono text-gray-400">{displayPop.length} Flowers Blooming</span>
+        <span className="text-xs font-mono uppercase tracking-wider text-gray-500 italic">Ventana al jardín</span>
+        <span className="text-xs font-mono text-gray-400">{displayPop.length} Flores floreciendo</span>
       </div>
       
       <div className="relative w-full h-[320px] flex items-center justify-center">
@@ -115,7 +115,7 @@ export const PopulationGrid: React.FC<PopulationGridProps> = ({
               )}
               onClick={() => onSelectOrganism?.(org)}
             >
-              <FlowerIcon org={org} theme={theme} />
+              <FlowerIconMemo org={org} theme={theme} />
             </motion.div>
           );
         })}
@@ -136,10 +136,10 @@ const FlowerIcon = ({ org, theme }: { org: Organism, theme: FlowerTheme }) => {
   const lightness = colors.lightness.start + (colors.lightness.end - colors.lightness.start) * org.phenotype;
 
   return (
-    <div className="relative flex items-center justify-center">
+    <div className="relative flex items-center justify-center will-change-transform">
       {/* Flower Petals */}
       <div 
-        className="w-6 h-6 shadow-sm transition-all duration-500 relative overflow-hidden"
+        className="w-6 h-6 shadow-sm relative overflow-hidden"
         style={{
           backgroundColor: `hsl(${hue}, ${saturation}%, ${lightness}%)`,
           borderRadius: borderRadius,
@@ -153,28 +153,22 @@ const FlowerIcon = ({ org, theme }: { org: Organism, theme: FlowerTheme }) => {
                 : "none"
         }}
       >
-        {/* Pattern: Dots */}
+        {/* Pattern: Dots (Simplified) */}
         {pattern === 'dots' && (
-          <div className="absolute inset-0 opacity-40" style={{ 
-            backgroundImage: 'radial-gradient(circle, currentColor 1px, transparent 1px)',
-            backgroundSize: '4px 4px',
-            color: lightness > 70 ? 'rgba(0,0,0,0.2)' : 'rgba(255,255,255,0.4)'
+          <div className="absolute inset-0 opacity-20 pointer-events-none" style={{ 
+            backgroundImage: 'radial-gradient(circle, currentColor 0.5px, transparent 0.5px)',
+            backgroundSize: '3px 3px',
+            color: lightness > 70 ? 'rgba(0,0,0,0.1)' : 'rgba(255,255,255,0.2)'
           }} />
         )}
         
-        {/* Simple petal cross */}
-        <div className="absolute inset-0 border border-black/10" style={{ borderRadius: borderRadius }} />
+        <div className="absolute inset-0 border border-black/5" style={{ borderRadius: borderRadius }} />
       </div>
       
       {/* Flower Center */}
-      <div className="absolute w-1.5 h-1.5 bg-amber-400 rounded-full shadow-xs" />
-      
-      {/* Stem */}
-      <div className="absolute -bottom-1 w-0.5 h-1 bg-emerald-600/20 rounded-full -z-10" />
-      
-      <div className="absolute -bottom-6 opacity-0 group-hover:opacity-100 transition-opacity bg-black/80 text-white text-[8px] px-1 rounded z-20 pointer-events-none">
-        {org.phenotype.toFixed(2)}
-      </div>
+      <div className="absolute w-1.5 h-1.5 bg-amber-400 rounded-full" />
     </div>
   );
 };
+
+const FlowerIconMemo = memo(FlowerIcon);

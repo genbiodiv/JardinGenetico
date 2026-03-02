@@ -21,16 +21,18 @@ import {
   Download,
   Trophy,
   RefreshCw,
-  Layout
+  Layout,
+  X
 } from 'lucide-react';
 import { Phase, Organism } from './types';
+import * as d3 from 'd3';
 import { createInitialPopulation, reproduce, calculatePhenotype } from './engine';
 import { Histogram } from './components/Histogram';
 import { PopulationGrid } from './components/PopulationGrid';
 import { PhenotypeHistoryChart } from './components/PhenotypeHistoryChart';
 import { OrganismDetailPanel } from './components/OrganismDetailPanel';
 import { GameplayGuide } from './components/GameplayGuide';
-import { PHASE_DATA, FLOWER_THEMES, FlowerTheme, PAUSE_THRESHOLD } from './constants';
+import { PHASE_DATA, FLOWER_THEMES, FlowerTheme, PAUSE_THRESHOLD, GAMEPLAY_GUIDE } from './constants';
 import { cn } from './lib/utils';
 
 export default function App() {
@@ -57,6 +59,7 @@ export default function App() {
   const [showGameplay, setShowGameplay] = useState(false);
   const [levelHistory, setLevelHistory] = useState<Record<number, { phase: Phase; generation: number; population: Organism[] }>>({});
   const [isGameFinished, setIsGameFinished] = useState(false);
+  const [showChallenges, setShowChallenges] = useState(false);
 
   // Fix body scroll when splash or detail panel is visible
   useEffect(() => {
@@ -73,16 +76,20 @@ export default function App() {
   const currentPhaseData = PHASE_DATA[phase];
 
   const getHistoryPoint = useCallback((pop: Organism[], gen: number) => {
-    const bins = { T1: 0, T2: 0, T3: 0, T4: 0, T5: 0 };
-    pop.forEach(org => {
-      if (org.phenotype < 0.2) bins.T1++;
-      else if (org.phenotype < 0.4) bins.T2++;
-      else if (org.phenotype < 0.6) bins.T3++;
-      else if (org.phenotype < 0.8) bins.T4++;
-      else bins.T5++;
+    const binCount = phase >= Phase.MULTI_GENE ? 20 : 5;
+    const binGenerator = d3.bin()
+      .domain([0, 1])
+      .thresholds(binCount);
+    
+    const binnedData = binGenerator(pop.map(org => org.phenotype));
+    
+    const bins: Record<string, number> = {};
+    binnedData.forEach((bin, i) => {
+      bins[`B${i}`] = bin.length;
     });
+    
     return { generation: gen, ...bins };
-  }, []);
+  }, [phase]);
 
   // Sync numGenes with phase
   useEffect(() => {
@@ -249,8 +256,9 @@ export default function App() {
   };
 
   const openGardener = () => {
-    if (!selectedOrganism && population.length > 0) {
+    if (!selectedOrganism && population.length >= 2) {
       setSelectedOrganism(population[0]);
+      setBreedingPartner(population[1]);
     }
   };
 
@@ -268,7 +276,7 @@ export default function App() {
       management: "Garden Management",
       mutationRate: "Mutation Rate",
       gardenSize: "Garden Size",
-      bloomSpeed: "Bloom Speed",
+      bloomSpeed: "Time between Generations",
       targetColor: "Target Color",
       selectionStrength: "Selection Strength",
       driftDesc: "Pure Genetic Drift: Luck determines survival.",
@@ -304,7 +312,9 @@ export default function App() {
       total: "total",
       dominantAlleles: "dominant",
       geneticGardener: "Genetic Gardener",
-      numGenes: "Number of Genes"
+      numGenes: "Number of Genes",
+      challenges: "Learning Challenges",
+      close: "Close"
     },
     es: {
       tagline: "Una simulación de herencia genética, dinámica de poblaciones y selección evolutiva.",
@@ -317,7 +327,7 @@ export default function App() {
       management: "Gestión del Jardín",
       mutationRate: "Tasa de Mutación",
       gardenSize: "Tamaño del Jardín",
-      bloomSpeed: "Velocidad de Floración",
+      bloomSpeed: "Tiempo entre Generaciones",
       targetColor: "Color Objetivo",
       selectionStrength: "Fuerza de Selección",
       driftDesc: "Deriva Genética Pura: La suerte determina la supervivencia.",
@@ -353,19 +363,11 @@ export default function App() {
       total: "total",
       dominantAlleles: "dominantes",
       geneticGardener: "Jardinero Genético",
-      numGenes: "Número de Genes"
+      numGenes: "Número de Genes",
+      challenges: "Desafíos de Aprendizaje",
+      close: "Cerrar"
     }
   }[language]), [language]);
-
-  const chartColors = useMemo(() => {
-    const { colors } = flowerTheme;
-    return [0.1, 0.3, 0.5, 0.7, 0.9].map(mid => {
-      const hue = colors.hue.start + (colors.hue.end - colors.hue.start) * mid;
-      const saturation = colors.saturation.start + (colors.saturation.end - colors.saturation.start) * mid;
-      const lightness = colors.lightness.start + (colors.lightness.end - colors.lightness.start) * mid;
-      return `hsl(${hue}, ${saturation}%, ${lightness}%)`;
-    });
-  }, [flowerTheme]);
 
   const handleSelectOrganism = (org: Organism) => {
     if (!selectedOrganism) {
@@ -425,29 +427,29 @@ export default function App() {
             )}
           >
             <div className={cn(
-              "max-w-xl w-full rounded-[2.5rem] shadow-2xl border p-8 md:p-10 my-auto transition-colors",
+              "max-w-xl w-full rounded-[2.5rem] shadow-2xl border p-8 md:p-10 my-auto transition-colors relative",
               theme === 'dark' ? "bg-[#1C1917] border-white/10" : "bg-white border-black/5"
             )}>
-              <div className="flex flex-col items-center text-center mb-10">
-                <div className="w-20 h-20 bg-emerald-600 rounded-3xl flex items-center justify-center text-white shadow-2xl shadow-emerald-200 mb-6 relative group">
-                  <Flower size={48} />
-                  <div className="absolute -top-2 -right-2 flex gap-1">
+              <div className="absolute top-6 right-6 flex gap-1 z-10">
                     <button 
                       onClick={(e) => { e.stopPropagation(); setLanguage(l => l === 'en' ? 'es' : 'en'); }}
-                      className="w-8 h-8 rounded-lg bg-white dark:bg-stone-800 shadow-lg flex items-center justify-center text-[10px] font-black text-indigo-600 border border-black/5 dark:border-white/10 hover:scale-110 transition-transform"
+                      className="w-8 h-8 rounded-lg bg-white dark:bg-stone-800 shadow-md flex items-center justify-center text-[10px] font-black text-indigo-500 border border-stone-200 dark:border-white/10 hover:scale-110 transition-transform"
                     >
                       {language === 'en' ? 'ES' : 'EN'}
                     </button>
                     <button 
                       onClick={(e) => { e.stopPropagation(); setTheme(t => t === 'light' ? 'dark' : 'light'); }}
-                      className="w-8 h-8 rounded-lg bg-white dark:bg-stone-800 shadow-lg flex items-center justify-center text-indigo-600 border border-black/5 dark:border-white/10 hover:scale-110 transition-transform"
+                      className="w-8 h-8 rounded-lg bg-white dark:bg-stone-800 shadow-md flex items-center justify-center text-indigo-500 border border-stone-200 dark:border-white/10 hover:scale-110 transition-transform"
                     >
                       {theme === 'light' ? <Sun size={14} /> : <Wind size={14} />}
                     </button>
-                  </div>
+              </div>
+
+              <div className="flex flex-col items-center text-center mb-10">
+                <div className="w-20 h-20 bg-emerald-600 rounded-3xl flex items-center justify-center text-white shadow-2xl shadow-emerald-200 mb-6 relative group">
+                  <Flower size={48} />
                 </div>
                 <h1 className="text-4xl font-black tracking-tight mb-2">Jardín Genético</h1>
-                <p className="text-xs font-mono uppercase tracking-widest text-emerald-600 mb-2 font-bold">Genetic Garden</p>
                 <p className={cn(
                   "font-medium max-w-sm",
                   theme === 'dark' ? "text-gray-400" : "text-gray-500"
@@ -467,10 +469,10 @@ export default function App() {
                         className={cn(
                           "p-4 rounded-3xl border-2 transition-all text-left group relative overflow-hidden",
                           flowerTheme.id === themeOption.id 
-                            ? "border-emerald-600 bg-emerald-50/50" 
+                            ? "border-emerald-500 bg-emerald-50 shadow-inner" 
                             : theme === 'dark' 
                               ? "border-white/5 hover:border-white/20 bg-white/5"
-                              : "border-gray-100 hover:border-gray-200 bg-gray-50/50"
+                              : "border-stone-100 hover:border-emerald-200 bg-white shadow-sm"
                         )}
                       >
                         <div className="flex items-center gap-3 mb-3">
@@ -523,7 +525,7 @@ export default function App() {
               <div className="flex flex-col gap-3">
                 <button
                   onClick={() => setIsSplashVisible(false)}
-                  className="w-full py-5 bg-emerald-600 text-white rounded-3xl font-black text-xl hover:bg-emerald-700 shadow-2xl shadow-emerald-200 transition-all flex items-center justify-center gap-3 active:scale-95"
+                  className="w-full py-5 bg-emerald-500 text-white rounded-3xl font-black text-xl hover:bg-emerald-600 shadow-xl shadow-emerald-100 transition-all flex items-center justify-center gap-3 active:scale-95"
                 >
                   {t.startGardening} <ArrowRight size={24} />
                 </button>
@@ -534,13 +536,89 @@ export default function App() {
                     "w-full py-4 border-2 rounded-3xl font-bold text-sm transition-all flex items-center justify-center gap-2",
                     theme === 'dark' 
                       ? "bg-white/5 text-emerald-400 border-white/10 hover:bg-white/10"
-                      : "bg-white text-emerald-600 border-emerald-100 hover:bg-emerald-50"
+                      : "bg-white text-emerald-600 border-stone-200 hover:border-emerald-300 hover:bg-emerald-50"
                   )}
                 >
                   <BookOpen size={16} /> {t.seeGameplay}
                 </button>
+
+                <button
+                  onClick={() => setShowChallenges(true)}
+                  className={cn(
+                    "w-full py-4 border-2 rounded-3xl font-bold text-sm transition-all flex items-center justify-center gap-2",
+                    theme === 'dark' 
+                      ? "bg-white/5 text-amber-400 border-white/10 hover:bg-white/10"
+                      : "bg-white text-amber-600 border-stone-200 hover:border-amber-300 hover:bg-amber-50"
+                  )}
+                >
+                  <Trophy size={16} /> {t.challenges}
+                </button>
               </div>
             </div>
+          </motion.div>
+        )}
+      </AnimatePresence>
+
+      {/* Challenges Modal */}
+      <AnimatePresence>
+        {showChallenges && (
+          <motion.div 
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
+            className="fixed inset-0 z-[150] flex items-center justify-center p-6 bg-black/60 backdrop-blur-sm"
+          >
+            <motion.div 
+              initial={{ scale: 0.9, opacity: 0 }}
+              animate={{ scale: 1, opacity: 1 }}
+              exit={{ scale: 0.9, opacity: 0 }}
+              className={cn(
+                "w-full max-w-2xl rounded-[40px] shadow-2xl overflow-hidden flex flex-col max-h-[80vh]",
+                theme === 'dark' ? "bg-stone-900 text-white" : "bg-white text-stone-900"
+              )}
+            >
+              <div className="p-8 border-b border-black/5 dark:border-white/10 flex justify-between items-center">
+                <div className="flex items-center gap-3">
+                  <div className="w-10 h-10 bg-amber-500 rounded-2xl flex items-center justify-center text-white shadow-lg shadow-amber-500/20">
+                    <Trophy size={20} />
+                  </div>
+                  <h2 className="text-2xl font-black tracking-tight">{GAMEPLAY_GUIDE[language].challenges.title}</h2>
+                </div>
+                <button 
+                  onClick={() => setShowChallenges(false)}
+                  className="p-2 hover:bg-black/5 dark:hover:bg-white/5 rounded-full transition-colors"
+                >
+                  <X size={20} />
+                </button>
+              </div>
+              
+              <div className="p-8 overflow-y-auto space-y-6">
+                {GAMEPLAY_GUIDE[language].challenges.list.map((challenge, i) => (
+                  <div key={i} className="flex gap-4 group">
+                    <div className="flex-shrink-0 w-8 h-8 rounded-full bg-amber-100 dark:bg-amber-900/30 flex items-center justify-center text-amber-600 dark:text-amber-400 font-black text-xs">
+                      {i + 1}
+                    </div>
+                    <div className="space-y-1">
+                      <p className="font-bold text-sm leading-tight group-hover:text-amber-600 transition-colors">
+                        {challenge.task}
+                      </p>
+                      <div className="flex items-center gap-1.5 text-[10px] text-gray-500 font-mono uppercase tracking-wider">
+                        <Layout size={10} /> {challenge.location}
+                      </div>
+                    </div>
+                  </div>
+                ))}
+              </div>
+
+              <div className="p-8 bg-gray-50 dark:bg-white/5 border-t border-black/5 dark:border-white/10">
+                <button 
+                  onClick={() => setShowChallenges(false)}
+                  className="w-full py-4 bg-stone-900 dark:bg-white text-white dark:text-stone-900 rounded-2xl font-bold text-sm hover:scale-[1.02] transition-all active:scale-95"
+                >
+                  {t.gotIt}
+                </button>
+              </div>
+            </motion.div>
           </motion.div>
         )}
       </AnimatePresence>
@@ -759,10 +837,10 @@ export default function App() {
                     type="range" 
                     min="0" 
                     max="0.2" 
-                    step="0.005" 
+                    step="0.02" 
                     value={mutationRate}
                     onChange={(e) => setMutationRate(parseFloat(e.target.value))}
-                    className="relative z-10 w-full h-1.5 bg-gray-300 dark:bg-white/10 rounded-lg appearance-none cursor-pointer accent-emerald-600 border border-black/5 dark:border-none"
+                    className="relative z-10 w-full h-1.5 bg-stone-500 dark:bg-white/20 rounded-lg appearance-none cursor-pointer accent-emerald-600 border border-black/10 dark:border-none"
                   />
                 </div>
               </div>
@@ -781,7 +859,7 @@ export default function App() {
                     step="10" 
                     value={populationSize}
                     onChange={(e) => setPopulationSize(parseInt(e.target.value))}
-                    className="relative z-10 w-full h-1.5 bg-gray-300 dark:bg-white/10 rounded-lg appearance-none cursor-pointer accent-emerald-600 border border-black/5 dark:border-none"
+                    className="relative z-10 w-full h-1.5 bg-stone-500 dark:bg-white/20 rounded-lg appearance-none cursor-pointer accent-emerald-600 border border-black/10 dark:border-none"
                   />
                 </div>
               </div>
@@ -795,12 +873,12 @@ export default function App() {
                   <div className="absolute w-full h-[1px] bg-black/10 dark:bg-white/5 top-1/2 -translate-y-1/2" />
                   <input 
                     type="range" 
-                    min="100" 
+                    min="200" 
                     max="2000" 
-                    step="100" 
+                    step="200" 
                     value={generationInterval}
                     onChange={(e) => setGenerationInterval(parseInt(e.target.value))}
-                    className="relative z-10 w-full h-1.5 bg-gray-300 dark:bg-white/10 rounded-lg appearance-none cursor-pointer accent-emerald-600 border border-black/5 dark:border-none"
+                    className="relative z-10 w-full h-1.5 bg-stone-500 dark:bg-white/20 rounded-lg appearance-none cursor-pointer accent-emerald-600 border border-black/10 dark:border-none"
                   />
                 </div>
               </div>
@@ -817,10 +895,10 @@ export default function App() {
                       type="range" 
                       min={phase === Phase.MULTI_GENE ? 3 : 10} 
                       max={phase === Phase.MULTI_GENE ? 10 : 100} 
-                      step="1" 
+                      step={phase === Phase.MULTI_GENE ? 1 : 10} 
                       value={numGenes}
                       onChange={(e) => setNumGenes(parseInt(e.target.value))}
-                      className="relative z-10 w-full h-1.5 bg-gray-300 dark:bg-white/10 rounded-lg appearance-none cursor-pointer accent-indigo-600 border border-black/5 dark:border-none"
+                      className="relative z-10 w-full h-1.5 bg-stone-500 dark:bg-white/20 rounded-lg appearance-none cursor-pointer accent-indigo-600 border border-black/10 dark:border-none"
                     />
                   </div>
                 </div>
@@ -848,10 +926,10 @@ export default function App() {
                         type="range" 
                         min="0" 
                         max="1" 
-                        step="0.01" 
+                        step="0.1" 
                         value={selectionTarget}
                         onChange={(e) => setSelectionTarget(parseFloat(e.target.value))}
-                        className="relative z-10 w-full h-1.5 bg-gray-300 dark:bg-white/10 rounded-lg appearance-none cursor-pointer accent-emerald-600 border border-black/5 dark:border-none"
+                        className="relative z-10 w-full h-1.5 bg-stone-500 dark:bg-white/20 rounded-lg appearance-none cursor-pointer accent-emerald-600 border border-black/10 dark:border-none"
                       />
                     </div>
                   </div>
@@ -867,10 +945,10 @@ export default function App() {
                         type="range" 
                         min="0" 
                         max="1" 
-                        step="0.05" 
+                        step="0.1" 
                         value={selectionStrength}
                         onChange={(e) => setSelectionStrength(parseFloat(e.target.value))}
-                        className="relative z-10 w-full h-1.5 bg-gray-300 dark:bg-white/10 rounded-lg appearance-none cursor-pointer accent-amber-500 border border-black/5 dark:border-none"
+                        className="relative z-10 w-full h-1.5 bg-stone-500 dark:bg-white/20 rounded-lg appearance-none cursor-pointer accent-amber-500 border border-black/10 dark:border-none"
                       />
                     </div>
                     <p className="text-[10px] text-gray-500 italic">
@@ -999,7 +1077,7 @@ export default function App() {
             />
             <PhenotypeHistoryChart 
               history={history} 
-              colors={chartColors} 
+              theme={flowerTheme} 
               isDark={theme === 'dark'}
               label={t.phenoEvo}
             />
@@ -1016,7 +1094,7 @@ export default function App() {
           />
 
           <AnimatePresence>
-            {selectedOrganism && (
+            {selectedOrganism && breedingPartner && (
               <OrganismDetailPanel 
                 organism={selectedOrganism}
                 partner={breedingPartner}
