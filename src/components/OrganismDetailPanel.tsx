@@ -57,7 +57,10 @@ export const OrganismDetailPanel: React.FC<OrganismDetailPanelProps> = ({
       resetGenes: "Reset to Original",
       modified: "Modified",
       domLetter: "Dominant Allele",
-      recLetter: "Recessive Allele"
+      recLetter: "Recessive Allele",
+      partnerId: "Partner ID",
+      total: "total",
+      dominantAlleles: "dominant"
     },
     es: {
       details: "Detalles de la Flor",
@@ -84,7 +87,10 @@ export const OrganismDetailPanel: React.FC<OrganismDetailPanelProps> = ({
       resetGenes: "Restablecer Original",
       modified: "Modificado",
       domLetter: "Alelo Dominante",
-      recLetter: "Alelo Recesivo"
+      recLetter: "Alelo Recesivo",
+      partnerId: "ID de Compañero",
+      total: "total",
+      dominantAlleles: "dominantes"
     }
   }[language]), [language]);
 
@@ -144,7 +150,9 @@ export const OrganismDetailPanel: React.FC<OrganismDetailPanelProps> = ({
     }
   }, [currentOrg.phenotype, language]);
 
-  const hue = theme.colors.start + (theme.colors.end - theme.colors.start) * currentOrg.phenotype;
+  const hue = theme.colors.hue.start + (theme.colors.hue.end - theme.colors.hue.start) * currentOrg.phenotype;
+  const saturation = theme.colors.saturation.start + (theme.colors.saturation.end - theme.colors.saturation.start) * currentOrg.phenotype;
+  const lightness = theme.colors.lightness.start + (theme.colors.lightness.end - theme.colors.lightness.start) * currentOrg.phenotype;
   const borderRadius = currentOrg.phenotype < 0.3 ? theme.shapes.minRadius : currentOrg.phenotype > 0.7 ? theme.shapes.maxRadius : theme.shapes.midRadius;
 
   const genes = useMemo(() => {
@@ -211,12 +219,27 @@ export const OrganismDetailPanel: React.FC<OrganismDetailPanelProps> = ({
         {/* Visual Summary */}
         <div className="flex flex-col items-center text-center">
           <div 
-            className="w-24 h-24 shadow-xl mb-4 relative flex items-center justify-center"
+            className="w-24 h-24 shadow-xl mb-4 relative flex items-center justify-center overflow-hidden"
             style={{
-              backgroundColor: `hsl(${hue}, ${theme.colors.saturation}%, ${theme.colors.lightness}%)`,
+              backgroundColor: `hsl(${hue}, ${saturation}%, ${lightness}%)`,
               borderRadius: borderRadius,
+              clipPath: theme.shapes.type === 'star' 
+                ? "polygon(50% 0%, 61% 35%, 98% 35%, 68% 57%, 79% 91%, 50% 70%, 21% 91%, 32% 57%, 2% 35%, 39% 35%)"
+                : theme.shapes.type === 'heart'
+                  ? "polygon(50% 15%, 80% 0%, 100% 20%, 100% 50%, 50% 100%, 0% 50%, 0% 20%, 20% 0%)"
+                  : theme.shapes.type === 'leaf'
+                    ? "polygon(50% 0%, 100% 50%, 50% 100%, 0% 50%)"
+                    : "none"
             }}
           >
+            {/* Pattern: Dots */}
+            {theme.pattern === 'dots' && (
+              <div className="absolute inset-0 opacity-40" style={{ 
+                backgroundImage: 'radial-gradient(circle, currentColor 2px, transparent 2px)',
+                backgroundSize: '8px 8px',
+                color: lightness > 70 ? 'rgba(0,0,0,0.2)' : 'rgba(255,255,255,0.4)'
+              }} />
+            )}
             <div className="absolute w-4 h-4 bg-amber-400 rounded-full shadow-inner" />
           </div>
           <div className="space-y-1">
@@ -283,7 +306,7 @@ export const OrganismDetailPanel: React.FC<OrganismDetailPanelProps> = ({
             ))}
           </div>
           <p className="text-[10px] text-gray-400 italic">
-            {genes.length} {t.genes} total. {t.alleles}: {genes.flatMap(g => g.alleles).reduce((a, b) => a + b, 0)} dominant.
+            {genes.length} {t.genes} {t.total}. {t.alleles}: {genes.flatMap(g => g.alleles).reduce((a, b) => a + b, 0)} {t.dominantAlleles}.
           </p>
         </div>
 
@@ -302,14 +325,30 @@ export const OrganismDetailPanel: React.FC<OrganismDetailPanelProps> = ({
               <div className="flex items-center justify-between p-4 bg-amber-50 dark:bg-amber-900/10 border border-amber-100 dark:border-amber-900/30 rounded-2xl">
                 <div className="flex items-center gap-3">
                   <div 
-                    className="w-10 h-10 shadow-sm"
+                    className="w-10 h-10 shadow-sm overflow-hidden relative"
                     style={{
-                      backgroundColor: `hsl(${theme.colors.start + (theme.colors.end - theme.colors.start) * partner.phenotype}, ${theme.colors.saturation}%, ${theme.colors.lightness}%)`,
+                      backgroundColor: `hsl(${theme.colors.hue.start + (theme.colors.hue.end - theme.colors.hue.start) * partner.phenotype}, ${theme.colors.saturation.start + (theme.colors.saturation.end - theme.colors.saturation.start) * partner.phenotype}%, ${theme.colors.lightness.start + (theme.colors.lightness.end - theme.colors.lightness.start) * partner.phenotype}%)`,
                       borderRadius: partner.phenotype < 0.3 ? theme.shapes.minRadius : partner.phenotype > 0.7 ? theme.shapes.maxRadius : theme.shapes.midRadius,
+                      clipPath: theme.shapes.type === 'star' 
+                        ? "polygon(50% 0%, 61% 35%, 98% 35%, 68% 57%, 79% 91%, 50% 70%, 21% 91%, 32% 57%, 2% 35%, 39% 35%)"
+                        : theme.shapes.type === 'heart'
+                          ? "polygon(50% 15%, 80% 0%, 100% 20%, 100% 50%, 50% 100%, 0% 50%, 0% 20%, 20% 0%)"
+                          : theme.shapes.type === 'leaf'
+                            ? "polygon(50% 0%, 100% 50%, 50% 100%, 0% 50%)"
+                            : "none"
                     }}
-                  />
+                  >
+                    {/* Pattern: Dots */}
+                    {theme.pattern === 'dots' && (
+                      <div className="absolute inset-0 opacity-40" style={{ 
+                        backgroundImage: 'radial-gradient(circle, currentColor 1px, transparent 1px)',
+                        backgroundSize: '4px 4px',
+                        color: (theme.colors.lightness.start + (theme.colors.lightness.end - theme.colors.lightness.start) * partner.phenotype) > 70 ? 'rgba(0,0,0,0.2)' : 'rgba(255,255,255,0.4)'
+                      }} />
+                    )}
+                  </div>
                   <div>
-                    <p className="text-[10px] font-mono text-amber-600 uppercase tracking-widest">Partner ID: {partner.id.slice(0, 8)}</p>
+                    <p className="text-[10px] font-mono text-amber-600 uppercase tracking-widest">{t.partnerId}: {partner.id.slice(0, 8)}</p>
                     <p className="font-bold text-sm">{t.phenotype}: {partner.phenotype.toFixed(3)}</p>
                   </div>
                 </div>
@@ -327,12 +366,28 @@ export const OrganismDetailPanel: React.FC<OrganismDetailPanelProps> = ({
                   {offspringPreview?.map((child, i) => (
                     <div key={i} className="flex flex-col items-center gap-2 p-2 rounded-xl bg-gray-50 dark:bg-white/5 border border-black/5 dark:border-white/10">
                       <div 
-                        className="w-12 h-12 shadow-sm"
+                        className="w-12 h-12 shadow-sm overflow-hidden relative"
                         style={{
-                          backgroundColor: `hsl(${theme.colors.start + (theme.colors.end - theme.colors.start) * child.phenotype}, ${theme.colors.saturation}%, ${theme.colors.lightness}%)`,
+                          backgroundColor: `hsl(${theme.colors.hue.start + (theme.colors.hue.end - theme.colors.hue.start) * child.phenotype}, ${theme.colors.saturation.start + (theme.colors.saturation.end - theme.colors.saturation.start) * child.phenotype}%, ${theme.colors.lightness.start + (theme.colors.lightness.end - theme.colors.lightness.start) * child.phenotype}%)`,
                           borderRadius: child.phenotype < 0.3 ? theme.shapes.minRadius : child.phenotype > 0.7 ? theme.shapes.maxRadius : theme.shapes.midRadius,
+                          clipPath: theme.shapes.type === 'star' 
+                            ? "polygon(50% 0%, 61% 35%, 98% 35%, 68% 57%, 79% 91%, 50% 70%, 21% 91%, 32% 57%, 2% 35%, 39% 35%)"
+                            : theme.shapes.type === 'heart'
+                              ? "polygon(50% 15%, 80% 0%, 100% 20%, 100% 50%, 50% 100%, 0% 50%, 0% 20%, 20% 0%)"
+                              : theme.shapes.type === 'leaf'
+                                ? "polygon(50% 0%, 100% 50%, 50% 100%, 0% 50%)"
+                                : "none"
                         }}
-                      />
+                      >
+                        {/* Pattern: Dots */}
+                        {theme.pattern === 'dots' && (
+                          <div className="absolute inset-0 opacity-40" style={{ 
+                            backgroundImage: 'radial-gradient(circle, currentColor 1px, transparent 1px)',
+                            backgroundSize: '4px 4px',
+                            color: (theme.colors.lightness.start + (theme.colors.lightness.end - theme.colors.lightness.start) * child.phenotype) > 70 ? 'rgba(0,0,0,0.2)' : 'rgba(255,255,255,0.4)'
+                          }} />
+                        )}
+                      </div>
                       <span className="text-[10px] font-bold">{child.phenotype.toFixed(2)}</span>
                     </div>
                   ))}

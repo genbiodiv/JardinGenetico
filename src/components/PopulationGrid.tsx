@@ -126,24 +126,42 @@ export const PopulationGrid: React.FC<PopulationGridProps> = ({
 
 const FlowerIcon = ({ org, theme }: { org: Organism, theme: FlowerTheme }) => {
   // Derive shape variation from phenotype
-  const { colors, shapes } = theme;
+  const { colors, shapes, pattern } = theme;
   const borderRadius = org.phenotype < 0.3 ? shapes.minRadius : org.phenotype > 0.7 ? shapes.maxRadius : shapes.midRadius;
   const rotation = (org.phenotype * 360) % 45;
 
-  // Calculate hue based on theme range
-  const hue = colors.start + (colors.end - colors.start) * org.phenotype;
+  // Calculate color components based on theme ranges
+  const hue = colors.hue.start + (colors.hue.end - colors.hue.start) * org.phenotype;
+  const saturation = colors.saturation.start + (colors.saturation.end - colors.saturation.start) * org.phenotype;
+  const lightness = colors.lightness.start + (colors.lightness.end - colors.lightness.start) * org.phenotype;
 
   return (
     <div className="relative flex items-center justify-center">
       {/* Flower Petals */}
       <div 
-        className="w-6 h-6 shadow-sm transition-all duration-500"
+        className="w-6 h-6 shadow-sm transition-all duration-500 relative overflow-hidden"
         style={{
-          backgroundColor: `hsl(${hue}, ${colors.saturation}%, ${colors.lightness}%)`,
+          backgroundColor: `hsl(${hue}, ${saturation}%, ${lightness}%)`,
           borderRadius: borderRadius,
           transform: `rotate(${rotation}deg)`,
+          clipPath: shapes.type === 'star' 
+            ? "polygon(50% 0%, 61% 35%, 98% 35%, 68% 57%, 79% 91%, 50% 70%, 21% 91%, 32% 57%, 2% 35%, 39% 35%)"
+            : shapes.type === 'heart'
+              ? "polygon(50% 15%, 80% 0%, 100% 20%, 100% 50%, 50% 100%, 0% 50%, 0% 20%, 20% 0%)"
+              : shapes.type === 'leaf'
+                ? "polygon(50% 0%, 100% 50%, 50% 100%, 0% 50%)"
+                : "none"
         }}
       >
+        {/* Pattern: Dots */}
+        {pattern === 'dots' && (
+          <div className="absolute inset-0 opacity-40" style={{ 
+            backgroundImage: 'radial-gradient(circle, currentColor 1px, transparent 1px)',
+            backgroundSize: '4px 4px',
+            color: lightness > 70 ? 'rgba(0,0,0,0.2)' : 'rgba(255,255,255,0.4)'
+          }} />
+        )}
+        
         {/* Simple petal cross */}
         <div className="absolute inset-0 border border-black/10" style={{ borderRadius: borderRadius }} />
       </div>

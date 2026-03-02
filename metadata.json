@@ -1,5 +1,5 @@
 {
-  "name": "Genetica: The Resolution of Life",
-  "description": "An interactive genetics laboratory exploring the transition from Mendelian simplicity to polygenic complexity through population management.",
+  "name": "Jardín Genético - Genetic Garden",
+  "description": "An interactive genetics laboratory exploring the transition from Mendelian simplicity to polygenic complexity. Developed for the biology course by Rafik Neme at Universidad del Norte.",
   "requestFramePermissions": []
 }

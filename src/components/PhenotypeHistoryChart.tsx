@@ -28,7 +28,7 @@ export const PhenotypeHistoryChart: React.FC<PhenotypeHistoryChartProps> = ({
           <CartesianGrid 
             strokeDasharray="3 3" 
             vertical={false} 
-            stroke={isDark ? "#292524" : "#f3f4f6"} 
+            stroke={isDark ? "#292524" : "#e2e8f0"} 
           />
           <XAxis 
             dataKey="generation" 
@@ -38,7 +38,7 @@ export const PhenotypeHistoryChart: React.FC<PhenotypeHistoryChartProps> = ({
             fontSize={10} 
             tickLine={false} 
             axisLine={false} 
-            tick={{ fill: isDark ? '#78716c' : '#9ca3af' }}
+            tick={{ fill: isDark ? '#78716c' : '#64748b' }}
           />
           <Tooltip 
             contentStyle={{ 

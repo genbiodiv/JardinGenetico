@@ -21,15 +21,11 @@ export function calculatePhenotype(genotype: number[], phase: Phase): number {
       return (genotype[0] + genotype[1]) / 2;
 
     case Phase.MULTI_GENE:
-      // 4 genes (8 alleles), additive
-      const sum3 = genotype.slice(0, 8).reduce((a, b) => a + b, 0);
-      return sum3 / 8;
-
     case Phase.FULLY_POLYGENIC:
     case Phase.SELECTION_DRIFT:
-      // 20 genes (40 alleles), additive
-      const sum4 = genotype.reduce((a, b) => a + b, 0);
-      return sum4 / genotype.length;
+      // Additive inheritance: phenotype is the proportion of dominant alleles
+      const sum = genotype.reduce((a, b) => a + b, 0);
+      return sum / genotype.length;
 
     default:
       return 0;

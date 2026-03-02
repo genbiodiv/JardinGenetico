@@ -63,6 +63,12 @@ export const GameplayGuide: React.FC<GameplayGuideProps> = ({ onClose, language,
             )}>
               {g.intro}
             </p>
+            <div className={cn(
+              "p-6 rounded-3xl border text-sm leading-relaxed italic",
+              isDark ? "bg-indigo-900/10 border-indigo-900/30 text-indigo-300" : "bg-indigo-50 border-indigo-100 text-indigo-700"
+            )}>
+              {g.credits}
+            </div>
           </section>
 
           {/* How to Play */}
@@ -107,6 +113,29 @@ export const GameplayGuide: React.FC<GameplayGuideProps> = ({ onClose, language,
                     isDark ? "text-gray-400" : "text-gray-500"
                   )}>
                     {phase.objective}
+                  </p>
+                </div>
+              ))}
+            </div>
+          </section>
+
+          {/* Concepts */}
+          <section className="space-y-6">
+            <div className="flex items-center gap-2 text-xs font-bold uppercase tracking-widest text-indigo-500">
+              <Target size={14} /> {g.concepts.title}
+            </div>
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+              {g.concepts.list.map((concept, i) => (
+                <div key={i} className="space-y-1">
+                  <h4 className="font-bold text-sm text-indigo-600 dark:text-indigo-400 flex items-center gap-2">
+                    <div className="w-1.5 h-1.5 rounded-full bg-indigo-500" />
+                    {concept.name}
+                  </h4>
+                  <p className={cn(
+                    "text-xs leading-relaxed pl-3.5 border-l border-indigo-100 dark:border-indigo-900/30",
+                    isDark ? "text-gray-400" : "text-gray-500"
+                  )}>
+                    {concept.desc}
                   </p>
                 </div>
               ))}

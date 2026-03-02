@@ -61,7 +61,8 @@ export const Histogram: React.FC<HistogramProps> = ({
           y1={height - margin.bottom} 
           x2={width - margin.right} 
           y2={height - margin.bottom} 
-          stroke={isDark ? "#292524" : "#e5e7eb"} 
+          stroke={isDark ? "#292524" : "#94a3b8"} 
+          strokeWidth={1}
         />
         
         {/* Bars */}
@@ -71,8 +72,10 @@ export const Histogram: React.FC<HistogramProps> = ({
           
           // Calculate color based on the midpoint of the bin
           const phenotype = ((d.x0 || 0) + (d.x1 || 0)) / 2;
-          const hue = colors.start + (colors.end - colors.start) * phenotype;
-          const barColor = `hsl(${hue}, ${colors.saturation}%, ${colors.lightness}%)`;
+          const hue = colors.hue.start + (colors.hue.end - colors.hue.start) * phenotype;
+          const saturation = colors.saturation.start + (colors.saturation.end - colors.saturation.start) * phenotype;
+          const lightness = colors.lightness.start + (colors.lightness.end - colors.lightness.start) * phenotype;
+          const barColor = `hsl(${hue}, ${saturation}%, ${lightness}%)`;
           
           return (
             <rect
@@ -92,7 +95,7 @@ export const Histogram: React.FC<HistogramProps> = ({
           x={margin.left} 
           y={height - 5} 
           fontSize="8" 
-          fill={isDark ? "#78716c" : "#9ca3af"} 
+          fill={isDark ? "#78716c" : "#64748b"} 
           textAnchor="start"
         >
           {domain[0]}
@@ -101,7 +104,7 @@ export const Histogram: React.FC<HistogramProps> = ({
           x={width - margin.right} 
           y={height - 5} 
           fontSize="8" 
-          fill={isDark ? "#78716c" : "#9ca3af"} 
+          fill={isDark ? "#78716c" : "#64748b"} 
           textAnchor="end"
         >
           {domain[1]}
