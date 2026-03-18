@@ -1,6 +1,7 @@
 import { Phase } from "./types";
 
-export const PAUSE_THRESHOLD = 50;
+export const PAUSE_THRESHOLD = 100;
+export const DOWNLOAD_THRESHOLD = 50;
 
 export type Localized<T = string> = {
   en: T;
@@ -231,12 +232,12 @@ export const GAMEPLAY_GUIDE: Localized<{
       title: "Cómo Jugar",
       steps: [
         "Observa la población inicial de flores en tu jardín.",
-        "Usa el botón 'Iniciar Estaciones' para dejar que la población evolucione naturalmente mediante el apareamiento aleatorio.",
+        "Usa el botón 'Avanzar generaciones automático' para dejar que la población evolucione naturalmente mediante el apareamiento aleatorio.",
         "Selecciona DOS flores para experimentar. Una vez seleccionadas dos, se abrirá el panel de 'Jardinero Genético'.",
         "En el panel de Jardinero, puedes editar genes manualmente para ver cómo afectan al fenotipo (apariencia).",
         "Realiza un cruce controlado entre las flores seleccionadas para repoblar el jardín con su descendencia.",
         "Descarga los datos de tu simulación en cualquier momento usando el botón de descarga.",
-        "Avanza a la siguiente Estación para desbloquear comportamientos genéticos más complejos."
+        "Avanza a la siguiente fase para desbloquear comportamientos genéticos más complejos."
       ]
     },
     phases: {

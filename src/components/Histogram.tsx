@@ -51,8 +51,8 @@ export const Histogram: React.FC<HistogramProps> = ({
       isDark ? "bg-[#1C1917] border-white/10" : "bg-white border-black/5"
     )}>
       <div className="flex justify-between items-center mb-2">
-        <span className="text-xs font-mono uppercase tracking-wider text-gray-500">{label}</span>
-        <span className="text-xs font-mono text-gray-400">n={data.length}</span>
+        <span className="text-xs font-mono uppercase tracking-wider text-gray-500 dark:text-stone-400">{label}</span>
+        <span className="text-xs font-mono text-gray-400 dark:text-stone-500">n={data.length}</span>
       </div>
       <svg width="100%" viewBox={`0 0 ${width} ${height}`} className="overflow-visible">
         {/* Axes */}

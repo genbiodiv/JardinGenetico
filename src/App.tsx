@@ -32,7 +32,7 @@ import { PopulationGrid } from './components/PopulationGrid';
 import { PhenotypeHistoryChart } from './components/PhenotypeHistoryChart';
 import { OrganismDetailPanel } from './components/OrganismDetailPanel';
 import { GameplayGuide } from './components/GameplayGuide';
-import { PHASE_DATA, FLOWER_THEMES, FlowerTheme, PAUSE_THRESHOLD, GAMEPLAY_GUIDE } from './constants';
+import { PHASE_DATA, FLOWER_THEMES, FlowerTheme, PAUSE_THRESHOLD, DOWNLOAD_THRESHOLD, GAMEPLAY_GUIDE } from './constants';
 import { cn } from './lib/utils';
 
 export default function App() {
@@ -113,7 +113,7 @@ export default function App() {
   }, [phase, populationSize, getHistoryPoint, flowerTheme, numGenes]);
 
   const runGeneration = useCallback(() => {
-    if (generation === PAUSE_THRESHOLD) {
+    if (generation >= PAUSE_THRESHOLD) {
       setIsPlaying(false);
       return;
     }
@@ -129,13 +129,23 @@ export default function App() {
           // Fitness is higher for those closer to target
           // selectionStrength 0 -> fitness 1 for all (pure drift)
           // selectionStrength 1 -> fitness varies significantly
-          const fitness = Math.exp(-dist * 8 * selectionStrength); 
+          // Use a steeper fitness curve to make selection more effective
+          const fitness = Math.exp(-Math.pow(dist, 1.5) * 12 * selectionStrength); 
           return { org, fitness };
         });
+
+        // Sort by fitness for elitism
+        populationWithFitness.sort((a, b) => b.fitness - a.fitness);
 
         const totalFitness = populationWithFitness.reduce((sum, p) => sum + p.fitness, 0);
         
         for (let i = 0; i < populationSize; i++) {
+          // Elitism: Keep the top 5% of the population exactly as is (no mutation in reproduction for them)
+          if (i < Math.max(1, Math.floor(populationSize * 0.05))) {
+            nextPop.push({ ...populationWithFitness[i].org, id: Math.random().toString(36).substr(2, 9) });
+            continue;
+          }
+
           const pickParent = () => {
             let r = Math.random() * totalFitness;
             for (const p of populationWithFitness) {
@@ -147,6 +157,7 @@ export default function App() {
           
           const p1 = pickParent();
           const p2 = pickParent();
+          
           nextPop.push(reproduce(p1, p2, mutationRate, phase));
         }
       } else {
@@ -162,7 +173,7 @@ export default function App() {
     });
     setGeneration(g => g + 1);
     setDiscoveryProgress(p => Math.min(100, p + 20));
-  }, [populationSize, mutationRate, phase, selectionStrength]);
+  }, [populationSize, mutationRate, phase, selectionStrength, selectionTarget]);
 
   // Separate history tracking to avoid stale closures and side effects in setPopulation
   useEffect(() => {
@@ -199,33 +210,70 @@ export default function App() {
     }
   };
 
-  const downloadData = (dataToDownload?: any) => {
-    const exportData = dataToDownload || {
-      theme: flowerTheme.name[language],
-      phase: PHASE_DATA[phase].subtitle[language],
-      generation,
-      population: population.map(org => ({
-        id: org.id,
-        phenotype: org.phenotype,
-        genotype: org.genotype.join('')
-      }))
-    };
-    const blob = new Blob([JSON.stringify(exportData, null, 2)], { type: 'application/json' });
+  const downloadData = () => {
+    if (generation < DOWNLOAD_THRESHOLD) {
+      alert(language === 'en' 
+        ? `You must reach at least ${DOWNLOAD_THRESHOLD} generations to download data.` 
+        : `Debes alcanzar al menos ${DOWNLOAD_THRESHOLD} generaciones para descargar datos.`);
+      return;
+    }
+
+    const lastHistoryPoint = history[history.length - 1];
+    const binKeys = Object.keys(lastHistoryPoint).filter(k => k.startsWith('B'));
+    const totalPop = population.length;
+
+    const csvRows = [];
+    // Header
+    csvRows.push(['Color_HEX', 'Frequency_Fraction', 'Generation'].join(','));
+
+    binKeys.forEach(key => {
+      const binIdx = parseInt(key.substring(1));
+      const binCount = binKeys.length;
+      const phenotype = (binIdx + 0.5) / binCount;
+      
+      const { colors } = flowerTheme;
+      const hue = colors.hue.start + (colors.hue.end - colors.hue.start) * phenotype;
+      const saturation = colors.saturation.start + (colors.saturation.end - colors.saturation.start) * phenotype;
+      const lightness = colors.lightness.start + (colors.lightness.end - colors.lightness.start) * phenotype;
+      const colorHsl = `hsl(${hue}, ${saturation}%, ${lightness}%)`;
+      const colorHex = d3.color(colorHsl)?.formatHex() || '#000000';
+      
+      const count = lastHistoryPoint[key];
+      const fraction = count / totalPop;
+      
+      csvRows.push([colorHex, fraction.toFixed(4), generation].join(','));
+    });
+
+    const csvContent = csvRows.join('\n');
+    const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
     const url = URL.createObjectURL(blob);
     const a = document.createElement('a');
     a.href = url;
-    a.download = `genetic_garden_data_${Date.now()}.json`;
+    a.download = `genetic_garden_data_gen${generation}_${Date.now()}.csv`;
     a.click();
   };
 
   const downloadAllData = () => {
-    downloadData({
-      gameSummary: Object.values(levelHistory).map((h: any) => ({
-        phase: PHASE_DATA[h.phase as Phase].subtitle[language],
-        generations: h.generation,
-        finalPopulationSize: h.population.length
-      }))
+    if (Object.keys(levelHistory).length === 0) return;
+    
+    const csvRows = [];
+    csvRows.push(['Phase', 'Generations', 'Final_Population_Size'].join(','));
+    
+    Object.values(levelHistory).forEach((h: any) => {
+      csvRows.push([
+        PHASE_DATA[h.phase as Phase].subtitle[language],
+        h.generation,
+        h.population.length
+      ].join(','));
     });
+
+    const csvContent = csvRows.join('\n');
+    const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = `genetic_garden_summary_${Date.now()}.csv`;
+    a.click();
   };
 
   const resetGame = () => {
@@ -333,14 +381,14 @@ export default function App() {
       driftDesc: "Deriva Genética Pura: La suerte determina la supervivencia.",
       selectionDesc: "Selección Fuerte: Solo los más aptos sobreviven.",
       balancedDesc: "Equilibrado: Tanto la suerte como la aptitud importan.",
-      stopSeasons: "Detener Estaciones",
-      startSeasons: "Iniciar Estaciones",
-      nextGen: "Siguiente Generación",
+      stopSeasons: "Detener avance automático",
+      startSeasons: "Avanzar generaciones automático",
+      nextGen: "Avanzar generaciones manual",
       replant: "Replantar Jardín",
       layoutRandom: "Aleatorio",
       layoutFreq: "Frecuencia",
       layoutColor: "Color",
-      advance: "Avanzar a la Siguiente Estación",
+      advance: "Siguiente fase",
       health: "Salud del Jardín: Óptima",
       garden: "Jardín",
       flowers: "Flores",
@@ -428,18 +476,24 @@ export default function App() {
           >
             <div className={cn(
               "max-w-xl w-full rounded-[2.5rem] shadow-2xl border p-8 md:p-10 my-auto transition-colors relative",
-              theme === 'dark' ? "bg-[#1C1917] border-white/10" : "bg-white border-black/5"
+              theme === 'dark' ? "bg-[#1C1917] border-white/10 text-[#FAFAF9]" : "bg-white border-black/5 text-[#1C1917]"
             )}>
               <div className="absolute top-6 right-6 flex gap-1 z-10">
                     <button 
                       onClick={(e) => { e.stopPropagation(); setLanguage(l => l === 'en' ? 'es' : 'en'); }}
-                      className="w-8 h-8 rounded-lg bg-white dark:bg-stone-800 shadow-md flex items-center justify-center text-[10px] font-black text-indigo-500 border border-stone-200 dark:border-white/10 hover:scale-110 transition-transform"
+                      className={cn(
+                        "w-8 h-8 rounded-lg shadow-md flex items-center justify-center text-[10px] font-black border hover:scale-110 transition-transform",
+                        theme === 'dark' ? "bg-white/10 text-white border-white/10" : "bg-stone-200 text-stone-900 border-stone-300"
+                      )}
                     >
                       {language === 'en' ? 'ES' : 'EN'}
                     </button>
                     <button 
                       onClick={(e) => { e.stopPropagation(); setTheme(t => t === 'light' ? 'dark' : 'light'); }}
-                      className="w-8 h-8 rounded-lg bg-white dark:bg-stone-800 shadow-md flex items-center justify-center text-indigo-500 border border-stone-200 dark:border-white/10 hover:scale-110 transition-transform"
+                      className={cn(
+                        "w-8 h-8 rounded-lg shadow-md flex items-center justify-center border hover:scale-110 transition-transform",
+                        theme === 'dark' ? "bg-white/10 text-amber-400 border-white/10" : "bg-stone-200 text-stone-900 border-stone-300"
+                      )}
                     >
                       {theme === 'light' ? <Sun size={14} /> : <Wind size={14} />}
                     </button>
@@ -452,7 +506,7 @@ export default function App() {
                 <h1 className="text-4xl font-black tracking-tight mb-2">Jardín Genético</h1>
                 <p className={cn(
                   "font-medium max-w-sm",
-                  theme === 'dark' ? "text-gray-400" : "text-gray-500"
+                  theme === 'dark' ? "text-stone-400" : "text-gray-500"
                 )}>
                   {t.tagline}
                 </p>
@@ -574,10 +628,13 @@ export default function App() {
               exit={{ scale: 0.9, opacity: 0 }}
               className={cn(
                 "w-full max-w-2xl rounded-[40px] shadow-2xl overflow-hidden flex flex-col max-h-[80vh]",
-                theme === 'dark' ? "bg-stone-900 text-white" : "bg-white text-stone-900"
+                theme === 'dark' ? "bg-[#1C1917] text-[#FAFAF9]" : "bg-white text-[#1C1917]"
               )}
             >
-              <div className="p-8 border-b border-black/5 dark:border-white/10 flex justify-between items-center">
+              <div className={cn(
+                "p-8 border-b border-black/5 dark:border-white/10 flex justify-between items-center",
+                theme === 'dark' ? "bg-[#1C1917] text-[#FAFAF9]" : "bg-white text-[#1C1917]"
+              )}>
                 <div className="flex items-center gap-3">
                   <div className="w-10 h-10 bg-amber-500 rounded-2xl flex items-center justify-center text-white shadow-lg shadow-amber-500/20">
                     <Trophy size={20} />
@@ -592,7 +649,10 @@ export default function App() {
                 </button>
               </div>
               
-              <div className="p-8 overflow-y-auto space-y-6">
+              <div className={cn(
+                "p-8 overflow-y-auto space-y-6",
+                theme === 'dark' ? "bg-[#1C1917]" : "bg-white"
+              )}>
                 {GAMEPLAY_GUIDE[language].challenges.list.map((challenge, i) => (
                   <div key={i} className="flex gap-4 group">
                     <div className="flex-shrink-0 w-8 h-8 rounded-full bg-amber-100 dark:bg-amber-900/30 flex items-center justify-center text-amber-600 dark:text-amber-400 font-black text-xs">
@@ -613,7 +673,7 @@ export default function App() {
               <div className="p-8 bg-gray-50 dark:bg-white/5 border-t border-black/5 dark:border-white/10">
                 <button 
                   onClick={() => setShowChallenges(false)}
-                  className="w-full py-4 bg-stone-900 dark:bg-white text-white dark:text-stone-900 rounded-2xl font-bold text-sm hover:scale-[1.02] transition-all active:scale-95"
+                  className="w-full py-4 bg-[#1C1917] dark:bg-[#FAFAF9] text-white dark:text-[#1C1917] rounded-2xl font-bold text-sm hover:scale-[1.02] transition-all active:scale-95"
                 >
                   {t.gotIt}
                 </button>
@@ -630,7 +690,10 @@ export default function App() {
             initial={{ opacity: 0 }}
             animate={{ opacity: 1 }}
             exit={{ opacity: 0 }}
-            className="fixed inset-0 z-[110] bg-white dark:bg-stone-950 overflow-y-auto"
+            className={cn(
+              "fixed inset-0 z-[110] overflow-y-auto transition-colors",
+              theme === 'dark' ? "bg-[#0C0A09] text-[#FAFAF9]" : "bg-[#F5F5F4] text-[#1C1917]"
+            )}
           >
             <div className="max-w-4xl mx-auto px-6 py-16">
               <div className="text-center mb-16">
@@ -658,7 +721,7 @@ export default function App() {
                       </div>
                       <div>
                         <h3 className="font-bold text-lg">{PHASE_DATA[h.phase as Phase].subtitle[language]}</h3>
-                        <p className="text-sm text-gray-500">{t.generations}: <span className="font-bold text-gray-900 dark:text-white">{h.generation}</span></p>
+                        <p className="text-sm text-gray-500 dark:text-stone-400">{t.generations}: <span className="font-bold text-gray-900 dark:text-[#FAFAF9]">{h.generation}</span></p>
                       </div>
                     </div>
                     <div className="flex items-center gap-3">
@@ -695,8 +758,8 @@ export default function App() {
 
       {/* Header */}
       <header className={cn(
-        "border-b backdrop-blur-md sticky top-0 z-10 transition-colors",
-        theme === 'dark' ? "bg-black/60 border-white/10" : "bg-white/80 border-black/5"
+        "border-b backdrop-blur-md sticky top-0 z-30 transition-colors",
+        theme === 'dark' ? "bg-[#0C0A09]/80 border-white/10 text-[#FAFAF9]" : "bg-white/80 border-black/5 text-[#1C1917]"
       )}>
         <div className="max-w-7xl mx-auto px-6 h-16 flex items-center justify-between">
           <div className="flex items-center gap-3">
@@ -712,20 +775,25 @@ export default function App() {
           <div className="flex items-center gap-4 md:gap-6">
             <div className="hidden sm:flex items-center gap-4 md:gap-6">
               <div className="flex flex-col items-end">
-                <span className="text-[10px] uppercase tracking-widest text-gray-400 font-mono">{t.genes}</span>
-                <span className="font-mono font-bold text-emerald-600">
+                <span className="text-[10px] uppercase tracking-widest text-gray-600 dark:text-gray-400 font-mono">{t.genes}</span>
+                <span className="font-mono font-bold text-emerald-800 dark:text-emerald-400">
                   {numGenes}
                 </span>
               </div>
               <div className="h-8 w-px bg-black/5 dark:bg-white/10" />
               <div className="flex flex-col items-end">
-                <span className="text-[10px] uppercase tracking-widest text-gray-400 font-mono">{t.currentPhase}</span>
-                <span className="font-medium text-sm">{currentPhaseData.subtitle[language]}</span>
+                <span className="text-[10px] uppercase tracking-widest text-gray-600 dark:text-gray-400 font-mono">{t.currentPhase}</span>
+                <span className="font-medium text-sm text-gray-900 dark:text-white">{currentPhaseData.subtitle[language]}</span>
               </div>
               <div className="h-8 w-px bg-black/5 dark:bg-white/10" />
               <div className="flex flex-col items-end">
-                <span className="text-[10px] uppercase tracking-widest text-gray-400 font-mono">{t.generation}</span>
-                <span className="font-mono font-bold text-indigo-600 dark:text-indigo-400">{generation}</span>
+                <span className="text-[10px] uppercase tracking-widest text-gray-600 dark:text-gray-400 font-mono">{t.generation}</span>
+                <span className={cn(
+                  "font-mono font-bold",
+                  theme === 'dark' ? "text-indigo-400" : "text-black"
+                )}>
+                  {generation}
+                </span>
               </div>
               <div className="h-8 w-px bg-black/5 dark:bg-white/10" />
             </div>
@@ -735,7 +803,7 @@ export default function App() {
                 onClick={() => setLanguage(l => l === 'en' ? 'es' : 'en')}
                 className={cn(
                   "w-10 h-10 rounded-xl flex items-center justify-center font-bold text-xs transition-all",
-                  theme === 'dark' ? "bg-white/5 hover:bg-white/10 text-gray-300" : "bg-gray-100 hover:bg-gray-200 text-gray-600"
+                  theme === 'dark' ? "bg-white/10 hover:bg-white/20 text-white" : "bg-stone-200 hover:bg-stone-300 text-stone-900"
                 )}
               >
                 {language === 'en' ? 'ES' : 'EN'}
@@ -744,7 +812,7 @@ export default function App() {
                 onClick={() => setTheme(t => t === 'light' ? 'dark' : 'light')}
                 className={cn(
                   "w-10 h-10 rounded-xl flex items-center justify-center transition-all",
-                  theme === 'dark' ? "bg-white/5 hover:bg-white/10 text-amber-400" : "bg-gray-100 hover:bg-gray-200 text-gray-600"
+                  theme === 'dark' ? "bg-white/10 hover:bg-white/20 text-amber-400" : "bg-stone-200 hover:bg-stone-300 text-stone-900"
                 )}
               >
                 {theme === 'light' ? <Sun size={18} /> : <Wind size={18} />}
@@ -753,7 +821,7 @@ export default function App() {
                 onClick={() => setShowGameplay(true)}
                 className={cn(
                   "w-10 h-10 rounded-xl flex items-center justify-center transition-all",
-                  theme === 'dark' ? "bg-white/5 hover:bg-white/10 text-indigo-400" : "bg-gray-100 hover:bg-gray-200 text-gray-600"
+                  theme === 'dark' ? "bg-white/10 hover:bg-white/20 text-indigo-400" : "bg-stone-200 hover:bg-stone-300 text-stone-900"
                 )}
                 title={t.seeGameplay}
               >
@@ -772,7 +840,7 @@ export default function App() {
             <div className="flex items-center gap-2 text-[10px] font-black uppercase tracking-[0.2em] text-indigo-600 dark:text-indigo-400">
               <Sprout size={12} /> {t.currentPhase}
             </div>
-            <h1 className="text-2xl font-black tracking-tight">{currentPhaseData.subtitle[language]}</h1>
+            <h1 className="text-2xl font-black tracking-tight text-indigo-600 dark:text-indigo-400">{currentPhaseData.subtitle[language]}</h1>
             <p className="text-sm text-gray-500 dark:text-stone-400 leading-relaxed">
               {currentPhaseData.description[language]}
             </p>
@@ -783,38 +851,24 @@ export default function App() {
             theme === 'dark' ? "bg-[#1C1917] border-white/10" : "bg-white border-black/5"
           )}>
             <div className="flex items-center justify-between mb-4">
-              <div className="flex items-center gap-2 text-xs font-bold uppercase tracking-widest text-gray-400">
-                <Timer size={14} /> {t.generation}
+              <div className="flex items-center gap-2 text-xs font-bold uppercase tracking-widest text-gray-900 dark:text-stone-300">
+                <Timer size={14} className="text-indigo-500" /> {t.generation}
               </div>
               <div className="flex items-center gap-2">
-                <span className="text-2xl font-black tabular-nums">{generation}</span>
-                {generation >= PAUSE_THRESHOLD && (
-                  <span className="text-xs font-bold text-emerald-600">✓</span>
-                )}
-              </div>
-            </div>
-            
-            <div className="space-y-3">
-              <button 
-                onClick={openGardener}
-                className="w-full py-3 bg-emerald-600 text-white rounded-xl font-bold text-xs hover:bg-emerald-700 transition-all flex items-center justify-center gap-2 shadow-lg shadow-emerald-200 dark:shadow-none"
-              >
-                <Edit3 size={14} /> {t.geneticGardener}
-              </button>
-
-              <div className="grid grid-cols-2 gap-2">
-                <button 
-                  onClick={() => downloadData()}
-                  className="py-3 bg-gray-100 dark:bg-white/5 text-gray-600 dark:text-stone-400 rounded-xl font-bold text-[10px] hover:bg-gray-200 dark:hover:bg-white/10 transition-all flex items-center justify-center gap-2"
-                >
-                  <Download size={12} /> {t.downloadData}
-                </button>
-                <button 
-                  onClick={() => restartLevel()}
-                  className="py-3 bg-gray-100 dark:bg-white/5 text-gray-600 dark:text-stone-400 rounded-xl font-bold text-[10px] hover:bg-gray-200 dark:hover:bg-white/10 transition-all flex items-center justify-center gap-2"
-                >
-                  <RotateCcw size={12} /> {t.restartLevel}
-                </button>
+                <span className={cn(
+                  "text-3xl font-black tabular-nums",
+                  theme === 'dark' ? "text-white" : "text-black"
+                )}>
+                  {generation}
+                </span>
+                <div className="flex gap-1">
+                  {generation >= DOWNLOAD_THRESHOLD && (
+                    <span className="text-[10px] font-bold text-indigo-500" title="Data Ready">CSV</span>
+                  )}
+                  {generation >= PAUSE_THRESHOLD && (
+                    <span className="text-xs font-bold text-emerald-600">✓</span>
+                  )}
+                </div>
               </div>
             </div>
           </div>
@@ -832,15 +886,15 @@ export default function App() {
                   <span className="font-mono">{(mutationRate * 100).toFixed(1)}%</span>
                 </div>
                 <div className="relative flex items-center h-4">
-                  <div className="absolute w-full h-[1px] bg-black/10 dark:bg-white/5 top-1/2 -translate-y-1/2" />
+                  <div className="absolute w-full h-[1px] bg-emerald-200 dark:bg-emerald-900/30 top-1/2 -translate-y-1/2" />
                   <input 
                     type="range" 
                     min="0" 
                     max="0.2" 
-                    step="0.02" 
+                    step="0.005" 
                     value={mutationRate}
                     onChange={(e) => setMutationRate(parseFloat(e.target.value))}
-                    className="relative z-10 w-full h-1.5 bg-stone-500 dark:bg-white/20 rounded-lg appearance-none cursor-pointer accent-emerald-600 border border-black/10 dark:border-none"
+                    className="relative z-10 w-full h-1.5 bg-emerald-100 dark:bg-emerald-900/20 rounded-lg appearance-none cursor-pointer accent-emerald-600 border border-emerald-200 dark:border-none"
                   />
                 </div>
               </div>
@@ -851,15 +905,15 @@ export default function App() {
                   <span className="font-mono">{populationSize}</span>
                 </div>
                 <div className="relative flex items-center h-4">
-                  <div className="absolute w-full h-[1px] bg-black/10 dark:bg-white/5 top-1/2 -translate-y-1/2" />
+                  <div className="absolute w-full h-[1px] bg-emerald-200 dark:bg-emerald-900/30 top-1/2 -translate-y-1/2" />
                   <input 
                     type="range" 
                     min="20" 
                     max="100" 
-                    step="10" 
+                    step="5" 
                     value={populationSize}
                     onChange={(e) => setPopulationSize(parseInt(e.target.value))}
-                    className="relative z-10 w-full h-1.5 bg-stone-500 dark:bg-white/20 rounded-lg appearance-none cursor-pointer accent-emerald-600 border border-black/10 dark:border-none"
+                    className="relative z-10 w-full h-1.5 bg-emerald-100 dark:bg-emerald-900/20 rounded-lg appearance-none cursor-pointer accent-emerald-600 border border-emerald-200 dark:border-none"
                   />
                 </div>
               </div>
@@ -870,15 +924,15 @@ export default function App() {
                   <span className="font-mono">{generationInterval}ms</span>
                 </div>
                 <div className="relative flex items-center h-4">
-                  <div className="absolute w-full h-[1px] bg-black/10 dark:bg-white/5 top-1/2 -translate-y-1/2" />
+                  <div className="absolute w-full h-[1px] bg-emerald-200 dark:bg-emerald-900/30 top-1/2 -translate-y-1/2" />
                   <input 
                     type="range" 
                     min="200" 
                     max="2000" 
-                    step="200" 
+                    step="50" 
                     value={generationInterval}
                     onChange={(e) => setGenerationInterval(parseInt(e.target.value))}
-                    className="relative z-10 w-full h-1.5 bg-stone-500 dark:bg-white/20 rounded-lg appearance-none cursor-pointer accent-emerald-600 border border-black/10 dark:border-none"
+                    className="relative z-10 w-full h-1.5 bg-emerald-100 dark:bg-emerald-900/20 rounded-lg appearance-none cursor-pointer accent-emerald-600 border border-emerald-200 dark:border-none"
                   />
                 </div>
               </div>
@@ -890,15 +944,15 @@ export default function App() {
                     <span className="font-mono">{numGenes}</span>
                   </div>
                   <div className="relative flex items-center h-4">
-                    <div className="absolute w-full h-[1px] bg-black/10 dark:bg-white/5 top-1/2 -translate-y-1/2" />
+                    <div className="absolute w-full h-[1px] bg-emerald-200 dark:bg-emerald-900/30 top-1/2 -translate-y-1/2" />
                     <input 
                       type="range" 
                       min={phase === Phase.MULTI_GENE ? 3 : 10} 
                       max={phase === Phase.MULTI_GENE ? 10 : 100} 
-                      step={phase === Phase.MULTI_GENE ? 1 : 10} 
+                      step={phase === Phase.MULTI_GENE ? 1 : 5} 
                       value={numGenes}
                       onChange={(e) => setNumGenes(parseInt(e.target.value))}
-                      className="relative z-10 w-full h-1.5 bg-stone-500 dark:bg-white/20 rounded-lg appearance-none cursor-pointer accent-indigo-600 border border-black/10 dark:border-none"
+                      className="relative z-10 w-full h-1.5 bg-emerald-100 dark:bg-emerald-900/20 rounded-lg appearance-none cursor-pointer accent-emerald-600 border border-emerald-200 dark:border-none"
                     />
                   </div>
                 </div>
@@ -921,15 +975,15 @@ export default function App() {
                       />
                     </div>
                     <div className="relative flex items-center h-4">
-                      <div className="absolute w-full h-[1px] bg-black/10 dark:bg-white/5 top-1/2 -translate-y-1/2" />
+                      <div className="absolute w-full h-[1px] bg-emerald-200 dark:bg-emerald-900/30 top-1/2 -translate-y-1/2" />
                       <input 
                         type="range" 
                         min="0" 
                         max="1" 
-                        step="0.1" 
+                        step="0.01" 
                         value={selectionTarget}
                         onChange={(e) => setSelectionTarget(parseFloat(e.target.value))}
-                        className="relative z-10 w-full h-1.5 bg-stone-500 dark:bg-white/20 rounded-lg appearance-none cursor-pointer accent-emerald-600 border border-black/10 dark:border-none"
+                        className="relative z-10 w-full h-1.5 bg-emerald-100 dark:bg-emerald-900/20 rounded-lg appearance-none cursor-pointer accent-emerald-600 border border-emerald-200 dark:border-none"
                       />
                     </div>
                   </div>
@@ -940,16 +994,16 @@ export default function App() {
                       <span className="font-mono">{(selectionStrength * 100).toFixed(0)}%</span>
                     </div>
                     <div className="relative flex items-center h-4">
-                      <div className="absolute w-full h-[1px] bg-black/10 dark:bg-white/5 top-1/2 -translate-y-1/2" />
-                      <input 
-                        type="range" 
-                        min="0" 
-                        max="1" 
-                        step="0.1" 
-                        value={selectionStrength}
-                        onChange={(e) => setSelectionStrength(parseFloat(e.target.value))}
-                        className="relative z-10 w-full h-1.5 bg-stone-500 dark:bg-white/20 rounded-lg appearance-none cursor-pointer accent-amber-500 border border-black/10 dark:border-none"
-                      />
+                    <div className="absolute w-full h-[1px] bg-emerald-200 dark:bg-emerald-900/30 top-1/2 -translate-y-1/2" />
+                    <input 
+                      type="range" 
+                      min="0" 
+                      max="1" 
+                      step="0.01" 
+                      value={selectionStrength}
+                      onChange={(e) => setSelectionStrength(parseFloat(e.target.value))}
+                      className="relative z-10 w-full h-1.5 bg-emerald-100 dark:bg-emerald-900/20 rounded-lg appearance-none cursor-pointer accent-emerald-600 border border-emerald-200 dark:border-none"
+                    />
                     </div>
                     <p className="text-[10px] text-gray-500 italic">
                       {selectionStrength === 0 
@@ -964,6 +1018,16 @@ export default function App() {
             </div>
 
             <div className="pt-4 space-y-3">
+              <button 
+                onClick={openGardener}
+                className={cn(
+                  "w-full py-3 rounded-xl font-bold text-sm flex items-center justify-center gap-2 transition-all shadow-md",
+                  theme === 'dark' ? "bg-emerald-600 text-white hover:bg-emerald-500 shadow-emerald-900/20" : "bg-emerald-600 text-white hover:bg-emerald-700 shadow-emerald-200"
+                )}
+              >
+                <Edit3 size={18} /> {t.geneticGardener}
+              </button>
+
               <button 
                 onClick={() => setIsPlaying(!isPlaying)}
                 disabled={!!selectedOrganism}
@@ -994,46 +1058,24 @@ export default function App() {
                 <ArrowRight size={18} /> {t.nextGen}
               </button>
 
-              <button 
-                onClick={resetPopulation}
-                className="w-full py-3 text-gray-400 hover:text-gray-600 dark:hover:text-gray-200 rounded-xl font-medium text-xs flex items-center justify-center gap-2 transition-all"
-              >
-                <RotateCcw size={14} /> {t.replant}
-              </button>
-
-              <div className="flex gap-2 pt-2 border-t border-black/5 dark:border-white/10">
+              <div className="grid grid-cols-2 gap-2">
                 <button 
-                  onClick={() => setLayoutMode('grid')}
+                  onClick={() => downloadData()}
                   className={cn(
-                    "flex-1 py-2 rounded-lg text-[10px] font-bold uppercase tracking-wider transition-all",
-                    layoutMode === 'grid' 
-                      ? "bg-emerald-100 text-emerald-700 border border-emerald-200 dark:bg-emerald-900/30 dark:text-emerald-400 dark:border-emerald-800" 
-                      : "bg-gray-50 text-gray-400 border border-transparent dark:bg-white/5"
+                    "py-3 rounded-xl font-bold text-sm flex items-center justify-center gap-2 transition-all shadow-sm",
+                    theme === 'dark' ? "bg-white/5 text-gray-300 hover:bg-white/10 border border-white/10" : "bg-gray-100 text-gray-600 hover:bg-gray-200 border border-gray-200"
                   )}
                 >
-                  {t.layoutRandom}
+                  <Download size={18} /> {t.downloadData}
                 </button>
                 <button 
-                  onClick={() => setLayoutMode('concentric')}
+                  onClick={() => restartLevel()}
                   className={cn(
-                    "flex-1 py-2 rounded-lg text-[10px] font-bold uppercase tracking-wider transition-all",
-                    layoutMode === 'concentric' 
-                      ? "bg-emerald-100 text-emerald-700 border border-emerald-200 dark:bg-emerald-900/30 dark:text-emerald-400 dark:border-emerald-800" 
-                      : "bg-gray-50 text-gray-400 border border-transparent dark:bg-white/5"
+                    "py-3 rounded-xl font-bold text-sm flex items-center justify-center gap-2 transition-all shadow-sm",
+                    theme === 'dark' ? "bg-white/5 text-gray-300 hover:bg-white/10 border border-white/10" : "bg-gray-100 text-gray-600 hover:bg-gray-200 border border-gray-200"
                   )}
                 >
-                  {t.layoutFreq}
-                </button>
-                <button 
-                  onClick={() => setLayoutMode('color')}
-                  className={cn(
-                    "flex-1 py-2 rounded-lg text-[10px] font-bold uppercase tracking-wider transition-all",
-                    layoutMode === 'color' 
-                      ? "bg-emerald-100 text-emerald-700 border border-emerald-200 dark:bg-emerald-900/30 dark:text-emerald-400 dark:border-emerald-800" 
-                      : "bg-gray-50 text-gray-400 border border-transparent dark:bg-white/5"
-                  )}
-                >
-                  {t.layoutColor}
+                  <RotateCcw size={18} /> {t.restartLevel}
                 </button>
               </div>
 
@@ -1086,11 +1128,13 @@ export default function App() {
           <PopulationGrid 
             population={population} 
             layoutMode={layoutMode} 
+            setLayoutMode={setLayoutMode}
             theme={flowerTheme} 
             isDark={theme === 'dark'}
             onSelectOrganism={handleSelectOrganism}
             selectedId={selectedOrganism?.id}
             partnerId={breedingPartner?.id}
+            t={t}
           />
 
           <AnimatePresence>
@@ -1163,7 +1207,7 @@ export default function App() {
         "border-t py-4 mt-12 transition-colors",
         theme === 'dark' ? "bg-black/40 border-white/10" : "bg-white border-black/5"
       )}>
-        <div className="max-w-7xl mx-auto px-6 flex justify-between items-center text-[10px] font-mono text-gray-400 uppercase tracking-widest">
+        <div className="max-w-7xl mx-auto px-6 flex justify-between items-center text-[10px] font-mono text-gray-400 dark:text-stone-500 uppercase tracking-widest">
           <div className="flex gap-6">
             <span className="flex items-center gap-1"><Sprout size={12} /> {t.garden}: {population.length} {t.flowers}</span>
             <span className="flex items-center gap-1"><Zap size={12} /> {t.mutation}: {(mutationRate * 100).toFixed(1)}%</span>

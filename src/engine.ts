@@ -25,7 +25,17 @@ export function calculatePhenotype(genotype: number[], phase: Phase): number {
     case Phase.SELECTION_DRIFT:
       // Additive inheritance: phenotype is the proportion of dominant alleles
       const sum = genotype.reduce((a, b) => a + b, 0);
-      return sum / genotype.length;
+      const raw = sum / genotype.length;
+      
+      // Apply a slight "stretching" function to make extremes more reachable
+      // This helps overcome the Central Limit Theorem effect where reaching 0 or 1 is statistically impossible
+      if (raw === 0 || raw === 1) return raw;
+      // Use a power function to push values away from the center slightly
+      // x' = 0.5 + sign(x-0.5) * (2*abs(x-0.5))^0.8 / 2
+      const centered = raw - 0.5;
+      const sign = centered >= 0 ? 1 : -1;
+      const stretched = 0.5 + sign * Math.pow(Math.abs(centered) * 2, 0.85) / 2;
+      return Math.max(0, Math.min(1, stretched));
 
     default:
       return 0;
@@ -61,8 +71,16 @@ export function reproduce(
     let finalB = alleleB;
 
     // Mutation
+    // Standard mutation
     if (Math.random() < mutationRate) finalA = 1 - finalA;
     if (Math.random() < mutationRate) finalB = 1 - finalB;
+
+    // "Burst" mutation to avoid local optima - occasionally flip multiple alleles
+    // Only happens if mutationRate is > 0
+    if (mutationRate > 0 && Math.random() < 0.01) {
+      if (Math.random() < mutationRate * 2) finalA = 1 - finalA;
+      if (Math.random() < mutationRate * 2) finalB = 1 - finalB;
+    }
 
     childGenotype.push(finalA, finalB);
   }

@@ -7,21 +7,25 @@ import { cn } from '../lib/utils';
 interface PopulationGridProps {
   population: Organism[];
   layoutMode: 'grid' | 'concentric' | 'color';
+  setLayoutMode: (mode: 'grid' | 'concentric' | 'color') => void;
   theme: FlowerTheme;
   isDark?: boolean;
   onSelectOrganism?: (org: Organism) => void;
   selectedId?: string;
   partnerId?: string;
+  t: any;
 }
 
 export const PopulationGrid: React.FC<PopulationGridProps> = ({ 
   population, 
   layoutMode, 
+  setLayoutMode,
   theme, 
   isDark = false,
   onSelectOrganism,
   selectedId,
-  partnerId
+  partnerId,
+  t
 }) => {
   // We only show a subset if population is huge to avoid lag
   const displayLimit = 64;
@@ -62,12 +66,8 @@ export const PopulationGrid: React.FC<PopulationGridProps> = ({
       }
     }
 
-    if (layoutMode === 'concentric') {
-      gridCells.sort((a, b) => a.dist - b.dist);
-    } else {
-      // Standard row-by-row for grid and color
-      gridCells.sort((a, b) => (a.r * 10 + a.c) - (b.r * 10 + b.c));
-    }
+    // Always use concentric layout for all modes as requested
+    gridCells.sort((a, b) => a.dist - b.dist);
 
     return sorted.map((org, i) => {
       const cell = gridCells[i] || { r: 0, c: 0 };
@@ -80,9 +80,47 @@ export const PopulationGrid: React.FC<PopulationGridProps> = ({
       "p-6 rounded-3xl border min-h-[400px] shadow-inner relative overflow-hidden transition-colors",
       isDark ? "bg-[#1C1917] border-white/10" : "bg-[#E7E5E4] border-black/5"
     )}>
-      <div className="flex justify-between items-center mb-6 relative z-10">
-        <span className="text-xs font-mono uppercase tracking-wider text-gray-500 italic">Ventana al jardín</span>
-        <span className="text-xs font-mono text-gray-400">{displayPop.length} Flores floreciendo</span>
+      <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4 mb-6 relative z-10">
+        <div className="flex flex-col">
+          <span className="text-xs font-mono uppercase tracking-wider text-gray-500 dark:text-stone-400 italic">Ventana al jardín</span>
+          <span className="text-[10px] font-mono text-gray-400 dark:text-stone-500">{displayPop.length} Flores floreciendo</span>
+        </div>
+
+        <div className="flex gap-1 p-1 bg-black/5 dark:bg-white/5 rounded-xl border border-black/5 dark:border-white/5">
+          <button 
+            onClick={() => setLayoutMode('grid')}
+            className={cn(
+              "px-3 py-1.5 rounded-lg text-[10px] font-bold uppercase tracking-wider transition-all",
+              layoutMode === 'grid' 
+                ? "bg-emerald-600 text-white shadow-sm" 
+                : "text-gray-400 hover:text-gray-600 dark:hover:text-gray-200"
+            )}
+          >
+            {t.layoutRandom}
+          </button>
+          <button 
+            onClick={() => setLayoutMode('concentric')}
+            className={cn(
+              "px-3 py-1.5 rounded-lg text-[10px] font-bold uppercase tracking-wider transition-all",
+              layoutMode === 'concentric' 
+                ? "bg-emerald-600 text-white shadow-sm" 
+                : "text-gray-400 hover:text-gray-600 dark:hover:text-gray-200"
+            )}
+          >
+            {t.layoutFreq}
+          </button>
+          <button 
+            onClick={() => setLayoutMode('color')}
+            className={cn(
+              "px-3 py-1.5 rounded-lg text-[10px] font-bold uppercase tracking-wider transition-all",
+              layoutMode === 'color' 
+                ? "bg-emerald-600 text-white shadow-sm" 
+                : "text-gray-400 hover:text-gray-600 dark:hover:text-gray-200"
+            )}
+          >
+            {t.layoutColor}
+          </button>
+        </div>
       </div>
       
       <div className="relative w-full h-[320px] flex items-center justify-center">

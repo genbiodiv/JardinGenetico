@@ -52,9 +52,9 @@ export const PhenotypeHistoryChart: React.FC<PhenotypeHistoryChartProps> = ({
       isDark ? "bg-[#1C1917] border-white/10" : "bg-white border-black/5"
     )}>
       <div className="flex justify-between items-center mb-2">
-        <span className="text-xs font-mono uppercase tracking-wider text-gray-500">{label}</span>
+        <span className="text-xs font-mono uppercase tracking-wider text-gray-500 dark:text-stone-400">{label}</span>
         <div className="flex items-center gap-2">
-          <span className="text-[10px] text-gray-400 font-mono">Lines:</span>
+          <span className="text-[10px] text-gray-400 dark:text-stone-500 font-mono">Lines:</span>
           <select 
             value={lineCount} 
             onChange={(e) => setLineCount(parseInt(e.target.value))}

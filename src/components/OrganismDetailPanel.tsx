@@ -1,6 +1,6 @@
 import React, { useMemo, useState, useEffect } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
-import { X, Heart, Dna, Info, ChevronRight, Edit3, Save, RotateCcw } from 'lucide-react';
+import { X, Heart, Dna, Info, ChevronRight, Edit3, Save, RotateCcw, Layout } from 'lucide-react';
 import { Organism, Phase } from '../types';
 import { FlowerTheme } from '../constants';
 import { cn } from '../lib/utils';
@@ -60,7 +60,12 @@ export const OrganismDetailPanel: React.FC<OrganismDetailPanelProps> = ({
       recLetter: "Recessive Allele",
       partnerId: "Partner ID",
       total: "total",
-      dominantAlleles: "dominant"
+      dominantAlleles: "dominant",
+      viewMode: "View Mode",
+      natural: "Natural",
+      edited: "Edited",
+      editingEnabled: "Editing Enabled",
+      editingDisabled: "Editing Disabled (Switch to Edited mode to modify)"
     },
     es: {
       details: "Detalles de la Flor",
@@ -90,17 +95,24 @@ export const OrganismDetailPanel: React.FC<OrganismDetailPanelProps> = ({
       recLetter: "Alelo Recesivo",
       partnerId: "ID de Compañero",
       total: "total",
-      dominantAlleles: "dominantes"
+      dominantAlleles: "dominantes",
+      viewMode: "Modo de Vista",
+      natural: "Natural",
+      edited: "Editado",
+      editingEnabled: "Edición Habilitada",
+      editingDisabled: "Edición Deshabilitada (Cambia a modo Editado para modificar)"
     }
   }[language]), [language]);
 
   const [editedOrganism, setEditedOrganism] = useState<Organism | null>(null);
+  const [viewMode, setViewMode] = useState<'natural' | 'edited'>('natural');
 
   useEffect(() => {
     setEditedOrganism(organism);
+    setViewMode('natural');
   }, [organism]);
 
-  const currentOrg = editedOrganism || organism;
+  const currentOrg = viewMode === 'edited' ? (editedOrganism || organism) : organism;
 
   const offspringPreview = useMemo(() => {
     if (!currentOrg || !partner) return null;
@@ -114,6 +126,7 @@ export const OrganismDetailPanel: React.FC<OrganismDetailPanelProps> = ({
   };
 
   const toggleAllele = (geneIndex: number, alleleIndex: number) => {
+    if (viewMode !== 'edited') return;
     if (!editedOrganism) return;
 
     const newGenotype = [...editedOrganism.genotype];
@@ -256,6 +269,38 @@ export const OrganismDetailPanel: React.FC<OrganismDetailPanelProps> = ({
           </div>
         </div>
 
+        {/* View Mode Toggle */}
+        <div className="space-y-3">
+          <div className="flex items-center gap-2 text-xs font-bold uppercase tracking-widest text-gray-400">
+            <Layout size={14} /> {t.viewMode}
+          </div>
+          <div className="flex p-1 bg-gray-100 dark:bg-white/5 rounded-xl border border-black/5 dark:border-white/10">
+            <button
+              onClick={() => setViewMode('natural')}
+              className={cn(
+                "flex-1 py-2 rounded-lg text-[10px] font-bold uppercase tracking-wider transition-all",
+                viewMode === 'natural' 
+                  ? "bg-emerald-600 text-white shadow-sm" 
+                  : "text-gray-500 hover:text-gray-700 dark:hover:text-gray-300"
+              )}
+            >
+              {t.natural}
+            </button>
+            <button
+              onClick={() => setViewMode('edited')}
+              className={cn(
+                "flex-1 py-2 rounded-lg text-[10px] font-bold uppercase tracking-wider transition-all flex items-center justify-center gap-2",
+                viewMode === 'edited' 
+                  ? "bg-emerald-600 text-white shadow-sm" 
+                  : "text-gray-500 hover:text-gray-700 dark:hover:text-gray-300"
+              )}
+            >
+              {t.edited}
+              {isModified && <div className={cn("w-1.5 h-1.5 rounded-full", viewMode === 'edited' ? "bg-white" : "bg-amber-500")} />}
+            </button>
+          </div>
+        </div>
+
         {/* Genetic Architecture */}
         <div className="space-y-4">
           <div className="flex items-center justify-between">
@@ -273,12 +318,17 @@ export const OrganismDetailPanel: React.FC<OrganismDetailPanelProps> = ({
           </div>
           
           <div className="p-3 bg-indigo-50/50 dark:bg-indigo-900/10 border border-indigo-100 dark:border-indigo-900/20 rounded-xl space-y-2">
-            <div className="flex items-center gap-2 text-[10px] font-bold text-indigo-600 dark:text-indigo-400 uppercase tracking-wider">
-              <Edit3 size={12} /> {t.editMode}
+            <div className={cn(
+              "flex items-center gap-2 text-[10px] font-bold uppercase tracking-wider",
+              viewMode === 'edited' ? "text-indigo-600 dark:text-indigo-400" : "text-gray-400"
+            )}>
+              <Edit3 size={12} /> {viewMode === 'edited' ? t.editingEnabled : t.editingDisabled}
             </div>
-            <p className="text-[9px] text-indigo-500/70 dark:text-indigo-400/50 italic leading-tight">
-              {t.editDesc}
-            </p>
+            {viewMode === 'edited' && (
+              <p className="text-[9px] text-indigo-500/70 dark:text-indigo-400/50 italic leading-tight">
+                {t.editDesc}
+              </p>
+            )}
           </div>
 
           <div className="grid grid-cols-5 gap-2">
@@ -291,9 +341,11 @@ export const OrganismDetailPanel: React.FC<OrganismDetailPanelProps> = ({
                       <button 
                         key={j} 
                         onClick={() => toggleAllele(i, j)}
+                        disabled={viewMode !== 'edited'}
                         className={cn(
                           "flex-1 h-8 rounded flex items-center justify-center text-[10px] font-bold transition-all active:scale-90",
-                          display.color
+                          display.color,
+                          viewMode !== 'edited' && "cursor-default opacity-80"
                         )}
                         title={display.label}
                       >
@@ -395,7 +447,7 @@ export const OrganismDetailPanel: React.FC<OrganismDetailPanelProps> = ({
 
                 <button 
                   onClick={handleBreed}
-                  className="w-full py-4 bg-rose-600 text-white rounded-2xl font-black text-sm hover:bg-rose-700 shadow-xl shadow-rose-200 dark:shadow-rose-900/20 transition-all flex items-center justify-center gap-2 active:scale-95"
+                  className="w-full py-4 bg-emerald-600 text-white rounded-2xl font-black text-sm hover:bg-emerald-700 shadow-xl shadow-emerald-200 dark:shadow-emerald-900/20 transition-all flex items-center justify-center gap-2 active:scale-95"
                 >
                   <Heart size={18} /> {t.performCross}
                 </button>
